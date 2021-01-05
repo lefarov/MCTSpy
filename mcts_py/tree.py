@@ -19,12 +19,19 @@ class ChanceNode:
     children: dict  # Dict of chanve nodes
 
 
+
+def ucb_action(decision_node):
+    """ Select the action in decision node according to UCB formula
+    """
+    pass
+
+
+
 class MCST:
 
-    def __init__(self, num_iterationsm, simulation_runner):
-        self.env = env
+    def __init__(self, num_iterationsm, value_estimator):
         self.num_iterationsm = num_iterationsm
-        self.simulation_runner = simulation_runner
+        self.value_estimator = value_estimator
 
         self.root = None
         self.stack = None
@@ -46,6 +53,19 @@ class MCST:
             available_actions = set(curr.state.enumerate_moves())
             # If all actions were tried at least once
             if curr.children.keys() == available_actions:
+                # Select the best action according to UCB
+                act = ucb(curr)
+                # Advance simulation
+                next_state = curr.state.apply_move(act)
+                
+                # Increment visites of Chance Node
+                cn = curr.children[act]
+                ch.visits += 1
+                # Append nodes to the tree
+                if next_state not in cn.children:
+                    dn = DecisionNode(next_state, {})
+                    cn.children[next_state] = dn
+                
                 # Go to the next state
                 curr = dn
 
@@ -57,14 +77,19 @@ class MCST:
                 # Advance simulation
                 next_state = curr.state.apply_move(act)
                 # Rollout simulation till the end using default policy
-                value = self.simulation_runner(next_state)
+                # TODO: should we implement off tree insertion?
+                value = self.value_estimator(next_state)
 
                 # Append nodes to the tree
                 dn = DecisionNode(next_state, {})
-                cn = ChanceNode(act, 0, 0, {act: dn})
+                cn = ChanceNode(act, 1, value, {next_state: dn})
+                curr.children[act] = cn
+
                 # Record nodes for backpropagation
                 self.stack.append(cn)
-                self.stack.append(dn)
+                # self.stack.append(dn)
+
+                break
 
 
 
