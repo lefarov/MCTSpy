@@ -1,15 +1,16 @@
 
+import abc
 import random
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Hashable, Callable
+from typing import Hashable, Callable, Tuple, Set, Deque
 
 
 @dataclass
 class DecisionNode:
     state: Hashable  # State of simulation
-    value: float  # Estimate of a state value, i.e V(s) in RL notation
+    reward: float  # Last observed reward in this state
     children: dict  # Dict of decision nodes
 
 
@@ -35,15 +36,43 @@ def random_action(decision_node: DecisionNode):
 
 
 
+class MCTSSimulatorInterface(abc.ABC):
+
+    @abs.abstractmethod
+    def step(self, state: Hashable, action: Hashable) -> Tuple[Hashable, float]:
+        """ Step through simulation.
+        """
+        pass
+
+    @abs.abstractmethod
+    def state_is_terminal(self, state: Hashable) -> bool:
+        """ Check if state is terminal.
+        """
+        pass
+
+    @abs.abstractmethod
+    def enumerate_actions(self, state: Hashable) -> Set:
+        """ Enumerate all possivle actions for given state
+        """
+        pass
+
+
+
 class MCST:
 
     def __init__(
-        self, num_iterations: int, action_selector: Callable, state_value_estimator: Callable
+        self,
+        simulator: MCTSSimulatorInterface,  
+        action_selection_policy: Callable[[DecisionNode], Hashable], 
+        state_value_estimator: Callable[[Hashable], float],
+        num_iterations: int,
     ) -> None:
         
-        self.num_iterations = num_iterations
-        self.action_selector = action_selector
+        self.simulator = simulator
+        self.action_selection_policy = action_selection_policy
+        # TODO: implement off tree insertion
         self.state_value_estimator = state_value_estimator
+        self.num_iterations = num_iterations
 
         self.root = None
         self.stack = None
@@ -57,69 +86,85 @@ class MCST:
             assert not self.stack
 
             # Rollout siulation and expand tree
-            value = MCST.expand(self.root, self.stack, self.state_value_estimator)
+            value = MCST.expand(
+                self.root, 
+                self.simulator, 
+                self.stack, 
+                self.action_selection_policy, 
+                self.state_value_estimator
+            )
 
             # Backup the resulting value
             MCST.backup(value, self.stack)
 
     @staticmethod
     def expand(
-        node: DecisionNode, stack: deque, action_selector: Callable, state_value_estimator: Callable
+        node: DecisionNode,
+        simulator: MCTSSimulatorInterface,
+        stack: Deque, 
+        action_selection_policy: Callable[[DecisionNode], Hashable], 
+        state_value_estimator: Callable[[Hashable], float],
     ) -> float: 
         
         # Start at provided node (root)
         current_node = node
         # Go untill the terminal state
-        while not current_node.state.is_end_of_game():
+        while not simulator.state_is_terminal(current_node.state):
             # Get available actions
-            available_actions = set(current_node.state.enumerate_moves())
+            available_actions = simulator.enumerate_actions(current_node.state)
             
             # If not all actions were tried at least once
             if not current_node.children.keys() == available_actions:
                 # Sample random from untried actions
                 action = random.choice(tuple(available_actions - current_node.children.keys()))
                 # Advance simulation
-                # TODO: implement intermediate rewards for common RL interface
-                next_state = current_node.state.apply_move(action)
+                next_state, reward = simulator.step(current_node.state, action)
 
-                # Append nodes to the tree
-                decision_node = DecisionNode(next_state, 0, {})
-                chance_node = ChanceNode(action, 1, 0, {next_state: decision_node})
+                # Estimate next state value using estimator and append nodes to the tree
+                decision_node = DecisionNode(
+                    next_state, 
+                    reward + state_value_estimator(next_state), 
+                    {}
+                )
+                chance_node = ChanceNode(action, 0, 0, {next_state: decision_node})
                 current_node.children[action] = chance_node
 
-                # Record chane nodes for backpropagation
+                # Record nodes for backpropagation
                 stack.append(chance_node)
+                stack.append(decision_node)
 
-                # Rollout simulation till the end using default policy
-                # TODO: implement off tree insertion
-                return state_value_estimator(next_state)
+                break
         
             # Select the best action according to provided policy
-            action = action_selector(current_node)
+            action = action_selection_policy(current_node)
             # Advance simulation
-            next_state = current_node.state.apply_move(action)
+            next_state, reward = simulator.step(current_node.state, action)
             
-            # Increment visites of Chance Node
             chance_node = current_node.children[action]
-            # Append nodes to the tree
+            # Append nodes to the tree if needed
             if next_state not in chance_node.children:
-                decision_node = DecisionNode(next_state, 0, {})
-                chance_node.children[next_state] = decision_node
+                chance_node.children[next_state] = DecisionNode(next_state, reward, {})
             
             # Record nodes for backpropagation
             stack.append(chance_node)
+            stack.append(chance_node.children[next_state])
 
             # Go to the next state
             current_node = chance_node.children[next_state]
 
-        return current_node.state.score_game()
-
     @staticmethod
-    def backup(value: float, stack: deque):
+    def backup(stack: Deque):
+        # Total Rollout Return (discounted)
+        cummulative_reward = 0
+        
         # Go in reverse over stack and update nodes
         while stack:
-            chance_node = deque.pop()
+            current_node = stack.pop()
 
-            # Accumulate value and counts
-            chance_node.visits += 1
-            chance_node.value += value
+            if isinstance(current_node, DecisionNode):
+                cummulative_reward += current_node.reward
+
+            else:
+                # Accumulate total returns
+                current_node.visits += 1
+                current_node.value += cummulative_reward
