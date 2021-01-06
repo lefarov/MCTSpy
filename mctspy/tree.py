@@ -1,5 +1,6 @@
 
 import abc
+import math
 import random
 
 from collections import deque
@@ -10,6 +11,7 @@ from typing import Hashable, Callable, Tuple, Set, Deque
 @dataclass
 class DecisionNode:
     state: Hashable  # State of simulation
+    visits: int  # Total number of visits (i.e, sum of visits of children nodes)
     reward: float  # Last observed reward in this state
     children: dict  # Dict of decision nodes
 
@@ -22,11 +24,23 @@ class ChanceNode:
     children: dict  # Dict of chanve nodes
 
 
+def ucb(
+    value: float, visits: int, total_visits: int, exploration_constant: float
+) -> float:
+    return value / visits + exploration_constant * math.sqrt(math.log(total_visits / visits))
 
-def ucb_action(decision_node: DecisionNode):
+def ucb_action(
+    decision_node: DecisionNode, exploration_constant: float = 1 / math.sqrt(2)
+):
     """ Select the action in decision node according to UCB formula.
     """
-    pass
+    # Total visits of the Decision Node
+    return max(
+        (chance_node for decision_node.children.values()), 
+        key=lambda chance_node: ucb(
+            chance_node.value, chance_node.visits, decision_node.visits, exploration_constant
+        )
+    ).action
 
 
 def random_action(decision_node: DecisionNode):
@@ -59,6 +73,7 @@ class MCTSSimulatorInterface(abc.ABC):
 
 
 class MCST:
+    # TODO: can we implement heap in MCTS to select best actions in O(1)?
 
     def __init__(
         self,
@@ -78,7 +93,7 @@ class MCST:
         self.stack = None
 
     def build_tree(self, state: Hashable):
-        self.root = DecisionNode(state, 0, {})
+        self.root = DecisionNode(state, 0, 0, {})
         self.stack = deque()
 
         for i in range(self.num_iterations):
@@ -108,6 +123,8 @@ class MCST:
         
         # Start at provided node (root)
         current_node = node
+        stack.append(current_node)
+
         # Go untill the terminal state
         while not simulator.state_is_terminal(current_node.state):
             # Get available actions
@@ -123,6 +140,7 @@ class MCST:
                 # Estimate next state value using estimator and append nodes to the tree
                 decision_node = DecisionNode(
                     next_state, 
+                    0,
                     reward + state_value_estimator(next_state), 
                     {}
                 )
@@ -162,6 +180,7 @@ class MCST:
             current_node = stack.pop()
 
             if isinstance(current_node, DecisionNode):
+                current_node.visits += 1
                 cummulative_reward += current_node.reward
 
             else:
