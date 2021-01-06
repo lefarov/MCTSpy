@@ -36,7 +36,7 @@ def ucb_action(
     """
     # Total visits of the Decision Node
     return max(
-        (chance_node for decision_node.children.values()), 
+        (chance_node for chance_node in decision_node.children.values()), 
         key=lambda chance_node: ucb(
             chance_node.value, chance_node.visits, decision_node.visits, exploration_constant
         )
@@ -52,27 +52,32 @@ def random_action(decision_node: DecisionNode):
 
 class MCTSSimulatorInterface(abc.ABC):
 
-    @abs.abstractmethod
+    @abc.abstractmethod
     def step(self, state: Hashable, action: Hashable) -> Tuple[Hashable, float]:
         """ Step through simulation.
         """
         pass
 
-    @abs.abstractmethod
+    @abc.abstractmethod
     def state_is_terminal(self, state: Hashable) -> bool:
         """ Check if state is terminal.
         """
         pass
 
-    @abs.abstractmethod
+    @abc.abstractmethod
     def enumerate_actions(self, state: Hashable) -> Set:
-        """ Enumerate all possivle actions for given state
+        """ Enumerate all possivle actions for given state.
+        """
+        pass
+    
+    @abc.abstractmethod
+    def get_initial_state(self) -> Hashable:
+        """ Get initial state.
         """
         pass
 
 
-
-class MCST:
+class MCTS:
     # TODO: can we implement heap in MCTS to select best actions in O(1)?
 
     def __init__(
@@ -89,20 +94,16 @@ class MCST:
         self.state_value_estimator = state_value_estimator
         self.num_iterations = num_iterations
 
-        self.root = None
-        self.stack = None
-
-    def build_tree(self, state: Hashable):
-        self.root = DecisionNode(state, 0, 0, {})
         self.stack = deque()
 
+    def build_tree(self, node: DecisionNode):
         for i in range(self.num_iterations):
             # Assert that every iteration is started with clear stack
             assert not self.stack
 
             # Rollout siulation and expand tree
-            value = MCST.expand(
-                self.root, 
+            value = MCTS.expand(
+                node, 
                 self.simulator, 
                 self.stack, 
                 self.action_selection_policy, 
@@ -110,7 +111,7 @@ class MCST:
             )
 
             # Backup the resulting value
-            MCST.backup(value, self.stack)
+            MCTS.backup(self.stack)
 
     @staticmethod
     def expand(
@@ -162,7 +163,8 @@ class MCST:
             # Append nodes to the tree if needed
             if next_state not in chance_node.children:
                 chance_node.children[next_state] = DecisionNode(next_state, reward, {})
-            
+
+            chance_node.children[next_state].reward = reward
             # Record nodes for backpropagation
             stack.append(chance_node)
             stack.append(chance_node.children[next_state])
