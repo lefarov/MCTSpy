@@ -51,16 +51,34 @@ def test_build_tree():
     env = FrozenLakeMCTS(env)
 
     mcts = MCTS(env, ucb_action, partial(random_rollout_value, env=env), 5000)
-    root = DecisionNode(env.get_initial_state(), 0, 0, {})
+    mcts_root = DecisionNode(env.get_initial_state(), 0, 0, {})
     
-    mcts.build_tree(root)
-    assert ucb_action(root) == 1
+    mcts.build_tree(mcts_root)
+    assert ucb_action(mcts_root) == 1
 
 
 def test_play():
     env = FrozenLakeEnv(is_slippery=False, map_name="4x4")
     env = FrozenLakeMCTS(env)
+    
+    state = env.get_initial_state()
+    trajectory = [state]
 
+    mcts = MCTS(env, ucb_action, partial(random_rollout_value, env=env), 1000)
+    mcts_root = DecisionNode(state, 0, 0, {})
+    current = mcts_root
 
+    while not env.state_is_terminal(state):
+        mcts.build_tree(current)
+
+        action = max(
+            (chance_node for chance_node in current.children.values()), 
+            key=lambda chance_node: chance_node.value / chance_node.visits
+        ).action
+
+        state, reward = env.step(state, action)
+        current = current.children[action].children[state]
+        
+        trajectory.append(state)
 
     pass
