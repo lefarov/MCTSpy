@@ -145,7 +145,7 @@ class MCTS:
                     reward + state_value_estimator(next_state), 
                     {}
                 )
-                chance_node = ChanceNode(action, 0, 0, {next_state: decision_node})
+                chance_node = ChanceNode(action, 0, 0.0, {next_state: decision_node})
                 current_node.children[action] = chance_node
 
                 # Record nodes for backpropagation
@@ -162,7 +162,7 @@ class MCTS:
             chance_node = current_node.children[action]
             # Append nodes to the tree if needed
             if next_state not in chance_node.children:
-                chance_node.children[next_state] = DecisionNode(next_state, reward, {})
+                chance_node.children[next_state] = DecisionNode(next_state, 0, 0.0, {})
 
             chance_node.children[next_state].reward = reward
             # Record nodes for backpropagation
@@ -175,17 +175,15 @@ class MCTS:
     @staticmethod
     def backup(stack: Deque):
         # Total Rollout Return (discounted)
-        cummulative_reward = 0
+        cummulative_reward = stack.pop().reward
         
         # Go in reverse over stack and update nodes
         while stack:
             current_node = stack.pop()
+            current_node.visits += 1
 
             if isinstance(current_node, DecisionNode):
-                current_node.visits += 1
                 cummulative_reward += current_node.reward
 
             else:
-                # Accumulate total returns
-                current_node.visits += 1
                 current_node.value += cummulative_reward
