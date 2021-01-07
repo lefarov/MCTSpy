@@ -1,9 +1,18 @@
+
+# from gym.envs.toy_text import FrozenLakeEnv
+
 import random
+import pytest
+gym_envs = pytest.importorskip("gym.envs.toy_text")
 
 from functools import partial
-from gym.envs.toy_text import FrozenLakeEnv
 
-from mctspy.tree import DecisionNode, MCTSSimulatorInterface, MCTS, ucb_action
+from mctspy.tree import (
+    DecisionNode, 
+    MCTSSimulatorInterface, 
+    MCTS, 
+    ucb_action,
+)
 
 
 class FrozenLakeMCTS(MCTSSimulatorInterface):
@@ -16,15 +25,9 @@ class FrozenLakeMCTS(MCTSSimulatorInterface):
         next_state, reward, *_ = self.env.step(action)
         
         return next_state, reward
-    
-    def state_reward(self, state):
-        return 1 if self.env.desc.flat[state] == b"G" else 0
 
     def state_is_terminal(self, state):
-        return (
-            self.env.desc.flat[state] == b"G" or 
-            self.env.desc.flat[state] == b"H"
-        )
+        return self.env.desc.flat[state] in (b"G", b"H")
 
     def enumerate_actions(self, state):
         return set(range(self.env.action_space.n))
@@ -46,42 +49,38 @@ def random_rollout_value(state, env: FrozenLakeMCTS):
 
     return cummulative_reward
 
+
 def test_build_tree():
-    env = FrozenLakeEnv(is_slippery=False, map_name="4x4")
+    random.seed(0)
+
+    env = gym_envs.FrozenLakeEnv(is_slippery=False, map_name="4x4")
     env = FrozenLakeMCTS(env)
 
-    mcts = MCTS(env, ucb_action, partial(random_rollout_value, env=env), 1000)
+    mcts = MCTS(env, ucb_action, partial(random_rollout_value, env=env), 50)
     mcts_root = DecisionNode(env.get_initial_state(), 0, 0, {})
     
     mcts.build_tree(mcts_root)
-    print("\n")
-    for i, chance_node in mcts_root.children.items():
-        print(f"{i}, score {chance_node.value / chance_node.visits}")
-    # assert ucb_action(mcts_root) == 1
 
 
 def test_play():
-    env = FrozenLakeEnv(is_slippery=False, map_name="4x4")
+    random.seed(0)
+
+    env = gym_envs.FrozenLakeEnv(is_slippery=False, map_name="4x4")
     env = FrozenLakeMCTS(env)
     
     state = env.get_initial_state()
     trajectory = [state]
 
-    mcts = MCTS(env, ucb_action, partial(random_rollout_value, env=env), 1000)
+    mcts = MCTS(env, ucb_action, partial(random_rollout_value, env=env), 50)
     mcts_root = DecisionNode(state, 0, 0, {})
     current = mcts_root
 
     while not env.state_is_terminal(state):
         mcts.build_tree(current)
 
-        action = max(
-            (chance_node for chance_node in current.children.values()), 
-            key=lambda chance_node: chance_node.value / chance_node.visits
-        ).action
-
+        action = ucb_action(current, 0)
         state, reward = env.step(state, action)
+        
         current = current.children[action].children[state]
         
         trajectory.append(state)
-
-    pass
