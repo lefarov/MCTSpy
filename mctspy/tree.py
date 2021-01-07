@@ -27,27 +27,40 @@ class ChanceNode:
 def ucb(
     value: float, visits: int, total_visits: int, exploration_constant: float
 ) -> float:
-    return value / visits + exploration_constant * math.sqrt(math.log(total_visits / visits))
+    return value / visits + exploration_constant * math.sqrt(math.log(total_visits) / visits)
+
 
 def ucb_action(
     decision_node: DecisionNode, exploration_constant: float = 1 / math.sqrt(2)
 ):
     """ Select the action in decision node according to UCB formula.
     """
-    # Total visits of the Decision Node
-    return max(
-        (chance_node for chance_node in decision_node.children.values()), 
-        key=lambda chance_node: ucb(
-            chance_node.value, chance_node.visits, decision_node.visits, exploration_constant
-        )
-    ).action
+    # Construct the list of (score, action) tuples
+    ucb_scores = [
+        (
+            ucb(chance_node.value, chance_node.visits, decision_node.visits, exploration_constant),
+            action,
+        ) 
+        for action, chance_node in decision_node.children.items()
+    ]
+    # Sort tuples according to score
+    ucb_scores.sort(reverse=True)
+    
+    # Go over sorted UCB scores and select all actions with maximu score
+    best_actions = []
+    for score, action in ucb_scores:
+        if score < ucb_scores[0][0]:
+            break
+
+        best_actions.append(action)
+    
+    return random.choice(best_actions)
 
 
 def random_action(decision_node: DecisionNode):
     """ Choose actoins randomly at every decision node.
     """
     return random.choice(tuple(decision_node.children.keys()))
-
 
 
 class MCTSSimulatorInterface(abc.ABC):
