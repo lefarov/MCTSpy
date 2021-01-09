@@ -24,35 +24,30 @@ class ChanceNode:
     children: dict  # Dict of chanve nodes
 
 
-def ucb(
+def uct(
     value: float, visits: int, total_visits: int, exploration_constant: float
 ) -> float:
     return value / visits + exploration_constant * math.sqrt(math.log(total_visits) / visits)
 
 
-def ucb_action(
+def uct_action(
     decision_node: DecisionNode, exploration_constant: float = 1 / math.sqrt(2)
 ):
     """ Select the action in decision node according to UCB formula.
-    """
-    # Construct the list of (score, action) tuples
-    ucb_scores = [
-        (
-            ucb(chance_node.value, chance_node.visits, decision_node.visits, exploration_constant),
-            action,
-        ) 
-        for action, chance_node in decision_node.children.items()
-    ]
-    # Sort tuples according to score
-    ucb_scores.sort(reverse=True)
-    
-    # Go over sorted UCB scores and select all actions with maximu score
-    best_actions = []
-    for score, action in ucb_scores:
-        if score < ucb_scores[0][0]:
-            break
 
-        best_actions.append(action)
+        Works only for positive rewards.
+    """
+    best_actions, best_score = [], -1
+    for action, chance_node in decision_node.children.items():
+        
+        score = uct(chance_node.value, chance_node.visits, decision_node.visits, exploration_constant)
+
+        if score > best_score:
+            best_score = score
+            best_actions = [action]
+
+        if score == best_score:
+            best_actions.append(action)
     
     return random.choice(best_actions)
 
