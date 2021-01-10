@@ -1,14 +1,14 @@
-import random
-import typing as t
-
-from collections import deque, defaultdict
-from dataclasses import dataclass
-
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from mctspy.simluator import MCTSSimulator
+
+import random
+import typing as t
+
+from collections import deque, defaultdict
+from dataclasses import dataclass
 
 
 @dataclass
@@ -166,19 +166,19 @@ class MCTS:
         return simulator.get_terminal_value(current_node.state)
 
     @staticmethod
-    def backup(stack: t.Deque, terminal_return: t.Dict):
+    def backup(stack: t.Deque, terminal_value: t.Dict):
         """ Backup the terminal state value and recorded rewards.
 
         Parameters
         ----------
         """
         cummulative_rewards = defaultdict(int)
-        cummulative_rewards.update(terminal_return)
+        cummulative_rewards.update(terminal_value)
 
         while stack:
             current_node = stack.pop()
             current_node.visits += 1
 
             if isinstance(current_node, ChanceNode):
-                cummulative_reward[current_node.agent_id] += current_node.reward
+                cummulative_rewards[current_node.agent_id] += current_node.reward
                 current_node.value += cummulative_rewards[current_node.agent_id]

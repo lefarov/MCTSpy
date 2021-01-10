@@ -1,12 +1,12 @@
-import math
-import random
-import typing as t
-
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from mctspy.tree import DecisionNode
+
+import math
+import random
+import typing as t
 
 
 def uct(

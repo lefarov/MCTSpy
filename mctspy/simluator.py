@@ -26,14 +26,20 @@ class MCTSSimulator(abc.ABC):
         pass
     
     @abc.abstractmethod
-    def get_initial_state(self) -> t.Hashable:
-        """ Get initial state.
+    def get_initial_state(self) -> t.Tuple[t.Hashable, t.Hashable]:
+        """ Get initial state and the ID of an agent who is taking action.
         """
         pass
 
     @abc.abstractmethod
     def get_agent_num(self) -> int:
         """ Get the number of agents (players).
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_current_agent(self, state: t.Hashable) -> t.Hashable:
+        """ Get the ID of an agent who supposed to take action.
         """
         pass
 
