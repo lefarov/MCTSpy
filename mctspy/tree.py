@@ -110,8 +110,8 @@ class MCTS:
         of its successor state. For the Decision Node with terminal state the
         final value is computed by simulator. The state value is then reuturned.
 
-        All Decision and Chance nodes are added to the stack, that is used
-        for backing up the rewards and the terimal value (actual or estimated).
+        All Chance nodes are added to the stack, that is used for backing up 
+        the rewards and the terimal value (actual or estimated).
 
         Parameters
         ----------
@@ -135,7 +135,7 @@ class MCTS:
 
         while not simulator.state_is_terminal(current_node.state):
             
-            stack.append(current_node)
+            current_node.visits += 1
             available_actions = simulator.enumerate_actions(current_node.state)
             
             # Decision Node with untried actions is found
@@ -143,8 +143,9 @@ class MCTS:
                 action = random.choice(tuple(available_actions - current_node.children.keys()))
                 next_state, reward, *_ = simulator.step(current_node.state, action)
                 
-                chance_node = ChanceNode(action, 0, reward, 0.0, {}, current_node.agent_id)
+                chance_node = ChanceNode(action, 1, reward, 0.0, {}, current_node.agent_id)
                 current_node.children[action] = chance_node
+                
                 stack.append(chance_node)
 
                 # Return the estimate of a successor state value
@@ -155,11 +156,13 @@ class MCTS:
             
             chance_node = current_node.children[action]
             chance_node.reward = reward
+            chance_node.visits += 1
+            
+            stack.append(chance_node)
 
             if next_state not in chance_node.children:
                 chance_node.children[next_state] = DecisionNode(next_state, 0, {}, agent_id)
 
-            stack.append(chance_node)
             current_node = chance_node.children[next_state]
 
         # Decision Node with terminal state is found. Return the value computed by simulator.
@@ -177,8 +180,5 @@ class MCTS:
 
         while stack:
             current_node = stack.pop()
-            current_node.visits += 1
-
-            if isinstance(current_node, ChanceNode):
-                cummulative_rewards[current_node.agent_id] += current_node.reward
-                current_node.value += cummulative_rewards[current_node.agent_id]
+            cummulative_rewards[current_node.agent_id] += current_node.reward
+            current_node.value += cummulative_rewards[current_node.agent_id]
