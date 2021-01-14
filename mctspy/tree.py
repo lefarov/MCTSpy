@@ -1,104 +1,76 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
 
-import abc
-import math
+if TYPE_CHECKING:
+    from mctspy.simluator import MCTSSimulator
+
 import random
+import typing as t
 
-from collections import deque
+from collections import deque, defaultdict
 from dataclasses import dataclass
-from typing import Hashable, Callable, Tuple, Set, Deque
 
 
 @dataclass
 class DecisionNode:
-    state: Hashable  # State of simulation
-    visits: int  # Total number of visits (i.e, sum of visits of children nodes)
-    reward: float  # Last observed reward in this state
-    children: dict  # Dict of decision nodes
+    """ Decision Node of Monte Carlo Tree Search with multi-agent support.
+
+    Parameteres
+    -----------
+    state: hashable
+        State of a simulation.
+    visits: int
+        Total number of visits for Decision Node (i.e, sum of childrens' visits).
+    children: dict
+        Dictionary for children Chance Nodes.
+    agent_id: hashable
+        Id of the agent which has to take an action for multi-agent simullation (e.g. multiplayer game).
+    """
+    state: t.Hashable
+    visits: int
+    children: t.Dict
+    agent_id: t.Hashable
 
 
 @dataclass
 class ChanceNode:
-    action: Hashable  # Taken action
-    visits: int  # Number of visits
-    value: float  # Estiamte of a state-action pair value, i.e. Q(s, a) in RL notation
-    children: dict  # Dict of chanve nodes
+    """ Chance Node of Monte Carlo Tree Search with multi-agent support.
 
-
-def uct(
-    value: float, visits: int, total_visits: int, exploration_constant: float
-) -> float:
-    return value / visits + exploration_constant * math.sqrt(math.log(total_visits) / visits)
-
-
-def uct_action(
-    decision_node: DecisionNode, exploration_constant: float = 1 / math.sqrt(2)
-):
-    """ Select the action in decision node according to UCB formula.
-
-        Works only for positive rewards.
+    Parameteres
+    -----------
+    action: hashable
+        Taken Action.
+    visits: int
+        Number of visits.
+    reward: float
+        Last observed reward for the state-action pair.
+    value: float
+        Estiamte of a state-action pair value, i.e. Q(s, a) in RL notation.
+    children: dict
+        Dictionary for children Decision Nodes.
+    agent_id: hashable
+        Id of the agent who took the action for multi-agent simullation (e.g. multiplayer game).
     """
-    best_actions, best_score = [], -1
-    for action, chance_node in decision_node.children.items():
-        
-        score = uct(chance_node.value, chance_node.visits, decision_node.visits, exploration_constant)
-
-        if score > best_score:
-            best_score = score
-            best_actions = [action]
-
-        if score == best_score:
-            best_actions.append(action)
-    
-    return random.choice(best_actions)
-
-
-def random_action(decision_node: DecisionNode):
-    """ Choose actoins randomly at every decision node.
-    """
-    return random.choice(tuple(decision_node.children.keys()))
-
-
-class MCTSSimulatorInterface(abc.ABC):
-
-    @abc.abstractmethod
-    def step(self, state: Hashable, action: Hashable) -> Tuple[Hashable, float]:
-        """ Step through simulation.
-        """
-        pass
-
-    @abc.abstractmethod
-    def state_is_terminal(self, state: Hashable) -> bool:
-        """ Check if state is terminal.
-        """
-        pass
-
-    @abc.abstractmethod
-    def enumerate_actions(self, state: Hashable) -> Set:
-        """ Enumerate all possivle actions for given state.
-        """
-        pass
-    
-    @abc.abstractmethod
-    def get_initial_state(self) -> Hashable:
-        """ Get initial state.
-        """
-        pass
+    action: t.Hashable
+    visits: int
+    reward: float
+    value: float
+    children: t.Dict
+    agent_id: t.Hashable
 
 
 class MCTS:
-    # TODO: can we implement heap in MCTS to select best actions in O(1)?
 
     def __init__(
         self,
-        simulator: MCTSSimulatorInterface,  
-        action_selection_policy: Callable[[DecisionNode], Hashable], 
-        state_value_estimator: Callable[[Hashable], float],
+        simulator: MCTSSimulator,  
+        action_selection_policy: t.Callable[[DecisionNode], t.Hashable], 
+        state_value_estimator: t.Callable[[t.Hashable], t.Dict[t.Hashable, float]],
         num_iterations: int,
     ) -> None:
         
         self.simulator = simulator
         self.action_selection_policy = action_selection_policy
-        # TODO: implement off tree insertion
         self.state_value_estimator = state_value_estimator
         self.num_iterations = num_iterations
 
@@ -106,10 +78,8 @@ class MCTS:
 
     def build_tree(self, node: DecisionNode):
         for i in range(self.num_iterations):
-            # Assert that every iteration is started with clear stack
             assert not self.stack
 
-            # Rollout siulation and expand tree
             value = MCTS.expand(
                 node, 
                 self.simulator, 
@@ -118,80 +88,97 @@ class MCTS:
                 self.state_value_estimator
             )
 
-            # Backup the resulting value
-            MCTS.backup(self.stack)
+            MCTS.backup(self.stack, value)
 
     @staticmethod
     def expand(
         node: DecisionNode,
-        simulator: MCTSSimulatorInterface,
-        stack: Deque, 
-        action_selection_policy: Callable[[DecisionNode], Hashable], 
-        state_value_estimator: Callable[[Hashable], float],
-    ) -> float: 
-        
-        # Start at provided node (root)
-        current_node = node
-        stack.append(current_node)
+        simulator: MCTSSimulator,
+        stack: t.Deque, 
+        action_selection_policy: t.Callable[[DecisionNode], t.Hashable], 
+        state_value_estimator: t.Callable[[t.Hashable], t.Dict],
+    ) -> float:
+        """ Expand the tree.
 
-        # Go untill the terminal state
+        Function traverses the Tree by iterating over the Decision Nodes 
+        until a Decision Node with at least one untried action or teminal 
+        state is found. Provided action selection policy is used to select
+        an action during the traverse.
+        
+        For the Decision Node with untried actions, one of those is sampled 
+        uniformly. The state value estimator is then used to compute the value 
+        of its successor state. For the Decision Node with terminal state the
+        final value is computed by simulator. The state value is then reuturned.
+
+        All Chance nodes are added to the stack, that is used for backing up 
+        the rewards and the terimal value (actual or estimated).
+
+        Parameters
+        ----------
+        node: DecisionNode
+            Root Decision Node.
+        simulator: MCTSSimulator
+            Simulator that follows the MCTS simulatio interface.
+        action_selection_policy: callable(DecisionNode) -> hashable
+            Policy that computes the action to take for the given Decision Node
+        state_value_estimator: callable(hashable) -> dict
+            Function that estimates the value for non-terminal Decision Node.
+            It's used during the expansion of Desion Node with untried actions.
+
+        Returns
+        -------
+        dict:
+            Value of the terminal state for every agent.
+            Returned by the simulator or estimated with value estimator.
+        """
+        current_node = node
+
         while not simulator.state_is_terminal(current_node.state):
-            # Get available actions
+            
+            current_node.visits += 1
             available_actions = simulator.enumerate_actions(current_node.state)
             
-            # If not all actions were tried at least once
+            # Decision Node with untried actions is found
             if not current_node.children.keys() == available_actions:
-                # Sample random from untried actions
                 action = random.choice(tuple(available_actions - current_node.children.keys()))
-                # Advance simulation
-                next_state, reward = simulator.step(current_node.state, action)
-
-                # Estimate next state value using estimator and append nodes to the tree
-                decision_node = DecisionNode(
-                    next_state, 
-                    0,
-                    reward + state_value_estimator(next_state), 
-                    {}
-                )
-                chance_node = ChanceNode(action, 0, 0.0, {next_state: decision_node})
+                next_state, reward, *_ = simulator.step(current_node.state, action)
+                
+                chance_node = ChanceNode(action, 1, reward, 0.0, {}, current_node.agent_id)
                 current_node.children[action] = chance_node
-
-                # Record nodes for backpropagation
+                
                 stack.append(chance_node)
-                stack.append(decision_node)
 
-                break
+                # Return the estimate of a successor state value
+                return state_value_estimator(next_state)
         
-            # Select the best action according to provided policy
             action = action_selection_policy(current_node)
-            # Advance simulation
-            next_state, reward = simulator.step(current_node.state, action)
+            next_state, reward, agent_id = simulator.step(current_node.state, action)
             
             chance_node = current_node.children[action]
-            # Append nodes to the tree if needed
-            if next_state not in chance_node.children:
-                chance_node.children[next_state] = DecisionNode(next_state, 0, 0.0, {})
-
-            chance_node.children[next_state].reward = reward
-            # Record nodes for backpropagation
+            chance_node.reward = reward
+            chance_node.visits += 1
+            
             stack.append(chance_node)
-            stack.append(chance_node.children[next_state])
 
-            # Go to the next state
+            if next_state not in chance_node.children:
+                chance_node.children[next_state] = DecisionNode(next_state, 0, {}, agent_id)
+
             current_node = chance_node.children[next_state]
 
+        # Decision Node with terminal state is found. Return the value computed by simulator.
+        return simulator.get_terminal_value(current_node.state)
+
     @staticmethod
-    def backup(stack: Deque):
-        # Total Rollout Return (discounted)
-        cummulative_reward = stack.pop().reward
-        
-        # Go in reverse over stack and update nodes
+    def backup(stack: t.Deque, terminal_value: t.Dict):
+        """ Backup the terminal state value and recorded rewards.
+
+        Parameters
+        ----------
+        """
+        cummulative_rewards = defaultdict(int)
+        cummulative_rewards.update(terminal_value)
+
         while stack:
             current_node = stack.pop()
-            current_node.visits += 1
-
-            if isinstance(current_node, DecisionNode):
-                cummulative_reward += current_node.reward
-
-            else:
-                current_node.value += cummulative_reward
+            cummulative_rewards[current_node.agent_id] += current_node.reward
+            current_node.value += cummulative_rewards[current_node.agent_id]
