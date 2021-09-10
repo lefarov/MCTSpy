@@ -113,7 +113,7 @@ class MCTS:
         All Chance nodes are added to the stack, that is used for backing up 
         the rewards and the terimal value (actual or estimated).
 
-        Parameters
+    Parameters
         ----------
         node: DecisionNode
             Root Decision Node.
@@ -152,7 +152,7 @@ class MCTS:
                 return state_value_estimator(next_state)
         
             action = action_selection_policy(current_node)
-            next_state, reward, agent_id = simulator.step(current_node.state, action)
+            next_state, reward, next_agent_id = simulator.step(current_node.state, action)
             
             chance_node = current_node.children[action]
             chance_node.reward = reward
@@ -161,7 +161,7 @@ class MCTS:
             stack.append(chance_node)
 
             if next_state not in chance_node.children:
-                chance_node.children[next_state] = DecisionNode(next_state, 0, {}, agent_id)
+                chance_node.children[next_state] = DecisionNode(next_state, 0, {}, next_agent_id)
 
             current_node = chance_node.children[next_state]
 
