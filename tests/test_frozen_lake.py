@@ -8,10 +8,10 @@ from collections import defaultdict
 
 from mctspy.tree import DecisionNode, MCTS
 from mctspy.policies import uct_action
-from mctspy.simluator import MCTSSimulator
+from mctspy.simluator import SimulatorInterface
 
 
-class FrozenLakeMCTS(MCTSSimulator):
+class FrozenLakeMCTS(SimulatorInterface):
 
     def __init__(self, env):
         self.env = env
