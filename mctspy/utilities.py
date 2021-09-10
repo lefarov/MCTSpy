@@ -2,10 +2,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mctspy.simluator import MCTSSimulator
+    from mctspy.simluator import SimulatorInterface
 
 
-def random_rollout_value(state, seed: int, env: MCTSSimulator):
+import random
+from collections import defaultdict
+
+
+def random_rollout_value(state, seed: int, env: SimulatorInterface):
     """ Rollout the environment till terminal state with random actions.
     """
     random.seed(seed)
