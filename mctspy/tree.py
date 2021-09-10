@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mctspy.simluator import MCTSSimulator
+    from mctspy.simluator import SimulatorInterface, SimulatorInterfacePO
 
 import random
 import typing as t
@@ -17,19 +17,24 @@ class DecisionNode:
 
     Parameteres
     -----------
-    state: hashable
-        State of a simulation.
+    observation: hashable
+        Observation of a simulation's state. The state itself in case of Fully-observed MDP.
     visits: int
         Total number of visits for Decision Node (i.e, sum of childrens' visits).
     children: dict
         Dictionary for children Chance Nodes.
     agent_id: hashable
         Id of the agent which has to take an action for multi-agent simullation (e.g. multiplayer game).
+    belief_state: list
+        List of probably true system states
+        (i.e. particles from [https://papers.nips.cc/paper/2010/file/edfbe1afcf9246bb0d40eb4d8027d90f-Paper.pdf]).
     """
-    state: t.Hashable
+    observation: t.Hashable
     visits: int
     children: t.Dict
     agent_id: t.Hashable
+    belief_state: t.List[t.Hashable] = None
+    history: t.List[t.Hashable] = None
 
 
 @dataclass
@@ -63,7 +68,7 @@ class MCTS:
 
     def __init__(
         self,
-        simulator: MCTSSimulator,  
+        simulator: SimulatorInterface,  
         action_selection_policy: t.Callable[[DecisionNode], t.Hashable], 
         state_value_estimator: t.Callable[[t.Hashable], t.Dict[t.Hashable, float]],
         num_iterations: int,
@@ -82,7 +87,7 @@ class MCTS:
 
             value = MCTS.expand(
                 node, 
-                self.simulator, 
+                self.simulator,
                 self.stack, 
                 self.action_selection_policy, 
                 self.state_value_estimator
@@ -93,7 +98,7 @@ class MCTS:
     @staticmethod
     def expand(
         node: DecisionNode,
-        simulator: MCTSSimulator,
+        simulator: SimulatorInterface,
         stack: t.Deque, 
         action_selection_policy: t.Callable[[DecisionNode], t.Hashable], 
         state_value_estimator: t.Callable[[t.Hashable], t.Dict],
@@ -133,15 +138,15 @@ class MCTS:
         """
         current_node = node
 
-        while not simulator.state_is_terminal(current_node.state):
+        while not simulator.state_is_terminal(current_node.observation):
             
             current_node.visits += 1
-            available_actions = simulator.enumerate_actions(current_node.state)
+            available_actions = simulator.enumerate_actions(current_node.observation)
             
             # Decision Node with untried actions is found
             if not current_node.children.keys() == available_actions:
                 action = random.choice(tuple(available_actions - current_node.children.keys()))
-                next_state, reward, *_ = simulator.step(current_node.state, action)
+                next_state, reward, *_ = simulator.step(current_node.observation, action)
                 
                 chance_node = ChanceNode(action, 1, reward, 0.0, {}, current_node.agent_id)
                 current_node.children[action] = chance_node
@@ -152,7 +157,7 @@ class MCTS:
                 return state_value_estimator(next_state)
         
             action = action_selection_policy(current_node)
-            next_state, reward, next_agent_id = simulator.step(current_node.state, action)
+            next_state, reward, next_agent_id = simulator.step(current_node.observation, action)
             
             chance_node = current_node.children[action]
             chance_node.reward = reward
@@ -166,7 +171,7 @@ class MCTS:
             current_node = chance_node.children[next_state]
 
         # Decision Node with terminal state is found. Return the value computed by simulator.
-        return simulator.get_terminal_value(current_node.state)
+        return simulator.get_terminal_value(current_node.observation)
 
     @staticmethod
     def backup(stack: t.Deque, terminal_value: t.Dict):
@@ -182,3 +187,73 @@ class MCTS:
             current_node = stack.pop()
             cummulative_rewards[current_node.agent_id] += current_node.reward
             current_node.value += cummulative_rewards[current_node.agent_id]
+
+
+class POMCP(MCTS):
+
+    def __init__(
+        self,
+        simulator: SimulatorInterfacePO,  
+        **kwargs
+    ) -> None:
+        super().__init__(simulator, **kwargs)
+
+    @staticmethod
+    def expand(
+        node: DecisionNode,
+        simulator: SimulatorInterface,
+        stack: t.Deque, 
+        action_selection_policy: t.Callable[[DecisionNode], t.Hashable], 
+        state_value_estimator: t.Callable[[t.Hashable], t.Dict],
+    ) -> float:
+        current_node = node
+
+        # Sample one of the Belief state
+        state = random.choice(current_node.belief_state)
+
+        while not simulator.state_is_terminal(state):
+            
+            current_node.visits += 1
+            available_actions = simulator.enumerate_actions(state)
+            
+            # Decision Node with untried actions is found
+            if not current_node.children.keys() == available_actions:
+                action = random.choice(tuple(available_actions - current_node.children.keys()))
+                next_state, _, reward, *_ = simulator.step(state, action)
+                
+                chance_node = ChanceNode(action, 1, reward, 0.0, {}, current_node.agent_id)
+                current_node.children[action] = chance_node
+                
+                stack.append(chance_node)
+
+                # Return the estimate of a successor state value
+                return state_value_estimator(next_state)
+        
+            # TODO: add history to the current node to make it available to Policy
+            action = action_selection_policy(current_node)
+            next_state, next_observation, reward, next_agent_id = simulator.step(state, action)
+            
+            chance_node = current_node.children[action]
+            chance_node.reward = reward
+            chance_node.visits += 1
+            
+            stack.append(chance_node)
+
+            if next_observation not in chance_node.children:
+                chance_node.children[next_observation] = DecisionNode(
+                    next_observation, 0, {}, next_agent_id, []
+                )
+
+            current_node = chance_node.children[next_observation]
+
+            # Add actual sampled state to the belief state
+            # TODO: use heuristic to add probable particles
+            current_node.belief_state.append(next_state)
+            # Transition into the next state
+            # TODO: should we resample from the belief instead?
+            state = next_state
+
+        # Decision Node with terminal state is found. Return the value computed by simulator.
+        return simulator.get_terminal_value(state)
+
+    
