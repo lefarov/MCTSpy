@@ -48,38 +48,3 @@ class SimulatorInterface(abc.ABC):
         """ Get the value of the terminal state for every agent.
         """
         pass
-
-
-class SimulatorInterfacePO(SimulatorInterface):
-    """Simulator Interface for Partiall-observed simulations.
-    
-    TODO:
-    1. Should we keep observation as separate function?
-    """
-
-    @abc.abstractmethod
-    def step(
-        self, state: t.Hashable, action: t.Hashable
-    ) -> t.Tuple[t.Hashable, t.Hashable, float, t.Hashable]:
-        """ Step through simulation.
-
-        Returns
-        -------
-        next_state: hashable
-        next_observations: hashable
-        reward: float
-        next_agent_id: hashable
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_initial_state(self) -> t.Tuple[t.Hashable, t.Hashable, t.Hashable]:
-        """ Get initial state and the ID of an agent who is taking action.
-
-        Returns
-        -------
-        initial_state: hashable
-        initial_observation: hashable
-        agent_id: hashable
-        """
-        pass
