@@ -1,4 +1,5 @@
 # %% imports
+import json
 import numpy as np
 
 import chess
@@ -8,10 +9,25 @@ from chess import (
     SQUARE_NAMES,
 )
 
-from reconchess import LocalGame
+from reconchess import (
+    LocalGame, 
+    GameHistory, 
+    GameHistoryEncoder, 
+    GameHistoryDecoder,
+)
 # %%
 
 game = LocalGame()
+game_hist = GameHistory()
+
+# Use a dump of the game history as a part of the state
+# TODO: access and restory games history
+# Save game history
+history_json = json.dumps(game_hist, cls=GameHistoryEncoder)
+game_hist_restore = json.loads(history_json, cls=GameHistoryDecoder)
+
+game.start()
+game.__game_history = game_hist_restore
 
 piece = game.board.piece_at(SQUARES_180[0])
 piece.__hash__()
