@@ -137,7 +137,7 @@ class BlindChessSimulator:
             if capture_square is not None:
                 captured_piece = self.observed_board(capture_square)
                 reward = self.reward_fuc(captured_piece, self.game)
-            
+
             # End player's turn
             self.game.end_turn()
         
