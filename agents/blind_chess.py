@@ -1,3 +1,5 @@
+"""Bots are Copied from [https://reconchess.readthedocs.io/en/latest/bot_create.html]."""
+
 import os
 import random
 import chess
@@ -8,7 +10,7 @@ from reconchess import Color, Player, Square, GameHistory, WinReason
 
 
 class RandomBot(Player):
-    """Copied from [https://reconchess.readthedocs.io/en/latest/bot_create.html]"""
+    """Bot that selects randomly from the set of available actions."""
     def handle_game_start(
         self, color: Color, board: chess.Board, opponent_name: str
     ):
@@ -61,8 +63,6 @@ class TroutBot(Player):
     TroutBot uses the Stockfish chess engine to choose moves. In order to run TroutBot you'll need to download
     Stockfish from https://stockfishchess.org/download/ and create an environment variable called STOCKFISH_EXECUTABLE
     that is the path to the downloaded Stockfish executable.
-
-    Copied from [https://reconchess.readthedocs.io/en/latest/bot_create.html].
     """
 
     def __init__(self):
