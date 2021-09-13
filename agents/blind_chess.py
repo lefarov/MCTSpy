@@ -56,10 +56,6 @@ class RandomBot(Player):
 
 
 STOCKFISH_ENV_VAR = 'STOCKFISH_EXECUTABLE'
-STOCKFISH_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "stockfish", "stockfish_14_x64"
-)
-os.environ[STOCKFISH_ENV_VAR] = STOCKFISH_PATH
 
 
 class TroutBot(Player):
