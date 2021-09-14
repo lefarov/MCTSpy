@@ -117,17 +117,21 @@ class BlindChessSimulator:
         """Get the current observation."""
         return self.observed_board._board_state()
 
-    def step(self, action: chess.Move):
+    def step(self, action):
         """Execute action."""
         reward = 0
 
         # Check the type of the current action
         if self.sense_action:
+            assert isinstance(action, int)
+
             # Apply sense action and add the result to the observable board
             for square, piece in self.game.sense(action):
                 self.observed_board.set_piece_at(square, piece)
 
         else:
+            assert isinstance(action, chess.Move)
+
             # Apply move action and update the board's stack
             _, taken_move, capture_square = self.game.move(action)
             if taken_move is not None:
@@ -135,7 +139,7 @@ class BlindChessSimulator:
 
             # Remove captured figure from the observable board and compute reward
             if capture_square is not None:
-                captured_piece = self.observed_board(capture_square)
+                captured_piece = self.observed_board.remove_piece_at(capture_square)
                 reward = self.reward_fuc(captured_piece, self.game)
 
             # End player's turn
@@ -149,9 +153,7 @@ class BlindChessSimulator:
             capture_square = self.game.opponent_move_results()
             if capture_square is not None:
                 self.observed_board.remove_piece_at(capture_square)
-
-            # End opponent's turn
-            self.game.end_turn()
+                # TODO: add penalty for captured figures
 
         # Switch the action type
         self.sense_action = not self.sense_action
