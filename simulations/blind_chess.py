@@ -37,9 +37,10 @@ class BlindChessSimulator:
     Opponent's agent is soldered into the simulator.
     
     TODO:
-    1. Manage board's stack of moves.
-    2. Play for different color.
-    3. Play simultoneounsly for two players.
+    1. Manage boards' stack of moves.
+    2. Make sure that turns are preserved for two boards.
+    3. Play for different color.
+    4. Play simultoneounsly for two players.
     """
 
     game_history_attr_name = "_LocalGame__game_history"
@@ -74,9 +75,9 @@ class BlindChessSimulator:
         # restore the observable and true boards
         observation.restore(self.observed_board)
         state.board.restore(self.game.board)
-        
+
         # Restore the history
-        restored_history = json.reads(state.history, cls=GameHistoryDecoder)
+        restored_history = json.loads(state.history, cls=GameHistoryDecoder)
         setattr(self.game, self.game_history_attr_name, restored_history)
 
         # Restore the sutrat time of the current turn
@@ -136,6 +137,8 @@ class BlindChessSimulator:
             _, taken_move, capture_square = self.game.move(action)
             if taken_move is not None:
                 self.observed_board.push(taken_move)
+                # Push will switch the color of the board, so we reset it back
+                self.observed_board.turn = self.player_color
 
             # Remove captured figure from the observable board and compute reward
             if capture_square is not None:
