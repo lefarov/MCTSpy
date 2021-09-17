@@ -82,3 +82,8 @@ move = random.choice(move_actions)
 state, obs, rew, player_id = sim.step(move)
 
 # %%
+opponent2 = RandomBot()
+sim2 = BlindChessSimulator(opponent2, capture_reward)
+# %%
+sim2.reset(state, obs)
+# %%
