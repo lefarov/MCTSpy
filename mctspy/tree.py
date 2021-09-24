@@ -210,7 +210,7 @@ class POMCP:
         for i in range(self.num_iterations):
             assert not self.stack
 
-            value = MCTS.expand(
+            value = POMCP.expand(
                 node,
                 self.simulator,
                 self.stack,
