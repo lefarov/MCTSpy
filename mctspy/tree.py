@@ -144,7 +144,7 @@ class MCTS:
             available_actions = simulator.enumerate_actions(current_node.observation)
             
             # Decision Node with untried actions is found
-            if not current_node.children.keys() == available_actions:
+            if not set(current_node.children.keys()) == available_actions:
                 action = random.choice(tuple(available_actions - current_node.children.keys()))
                 next_state, reward, *_ = simulator.step(current_node.observation, action)
                 

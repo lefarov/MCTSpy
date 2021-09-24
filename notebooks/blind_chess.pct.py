@@ -61,12 +61,12 @@ board_copy.move_stack = list(board_move_stack)
 
 # %% [markdown]
 # ## Step down manually through MCTS simulator for Blind Chess
-from simulations.blind_chess import BlindChessSimulator, capture_reward
+from simulations.blind_chess import BlindChessSP, capture_reward
 from agents.blind_chess import RandomBot, TroutBot
 
 # %%
 opponent = RandomBot()
-sim = BlindChessSimulator(opponent, capture_reward)
+sim = BlindChessSP(opponent, capture_reward)
 
 # %%
 sense_actions = sim.enumerate_actions()
@@ -83,7 +83,7 @@ state, obs, rew, player_id = sim.step(move)
 
 # %%
 opponent2 = RandomBot()
-sim2 = BlindChessSimulator(opponent2, capture_reward)
+sim2 = BlindChessSP(opponent2, capture_reward)
 # %%
 sim2.reset(state, obs)
 # %%
