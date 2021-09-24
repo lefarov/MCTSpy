@@ -8,7 +8,7 @@ class SimulatorInterface(abc.ABC):
     @abc.abstractmethod
     def step(
         self, state: t.Hashable, action: t.Hashable
-    ) -> t.Tuple[t.Hashable, float, t.Hashable]:
+    ) -> t.Tuple[t.Hashable, t.Hashable, float, t.Hashable]:
         """ Step through simulation.
         """
         pass
