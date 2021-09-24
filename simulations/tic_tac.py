@@ -36,7 +36,8 @@ class TicTac(SimulatorInterface):
     EmptyCell: int = -1
 
     def step(self, state: TicTacState, action: int) -> t.Tuple[t.Hashable, t.Hashable, float, t.Hashable]:
-        newState = copy.copy(state)
+        # We have list in our state
+        newState = copy.deepcopy(state)
         coord = action
 
         # --- Handle the 'sense' action.
