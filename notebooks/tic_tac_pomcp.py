@@ -13,7 +13,7 @@ verbal = False
 game = TicTac()
 seed = 1337
 mcts = POMCP(
-    game, uct_action, partial(random_rollout_value, env=game, seed=1337), 50
+    game, uct_action, partial(random_rollout_value, env=game, seed=1337), 20
 )
 
 def report(message):
