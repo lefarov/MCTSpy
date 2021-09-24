@@ -189,14 +189,36 @@ class MCTS:
             current_node.value += cummulative_rewards[current_node.agent_id]
 
 
-class POMCP(MCTS):
+class POMCP:
 
     def __init__(
-        self,
-        simulator: SimulatorInterfacePO,  
-        **kwargs
+            self,
+            simulator: SimulatorInterface,
+            action_selection_policy: t.Callable[[DecisionNode], t.Hashable],
+            state_value_estimator: t.Callable[[t.Hashable], t.Dict[t.Hashable, float]],
+            num_iterations: int,
     ) -> None:
-        super().__init__(simulator, **kwargs)
+
+        self.simulator = simulator
+        self.action_selection_policy = action_selection_policy
+        self.state_value_estimator = state_value_estimator
+        self.num_iterations = num_iterations
+
+        self.stack = deque()
+
+    def build_tree(self, node: DecisionNode):
+        for i in range(self.num_iterations):
+            assert not self.stack
+
+            value = MCTS.expand(
+                node,
+                self.simulator,
+                self.stack,
+                self.action_selection_policy,
+                self.state_value_estimator
+            )
+
+            MCTS.backup(self.stack, value)
 
     @staticmethod
     def expand(
@@ -256,4 +278,17 @@ class POMCP(MCTS):
         # Decision Node with terminal state is found. Return the value computed by simulator.
         return simulator.get_terminal_value(state)
 
+    def backup(stack: t.Deque, terminal_value: t.Dict):
+        """ Backup the terminal state value and recorded rewards.
+
+        Parameters
+        ----------
+        """
+        cummulative_rewards = defaultdict(int)
+        cummulative_rewards.update(terminal_value)
+
+        while stack:
+            current_node = stack.pop()
+            cummulative_rewards[current_node.agent_id] += current_node.reward
+            current_node.value += cummulative_rewards[current_node.agent_id]
     
