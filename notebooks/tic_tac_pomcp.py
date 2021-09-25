@@ -3,7 +3,7 @@ from functools import partial
 
 from mctspy.policies import uct_action
 from mctspy.tree import POMCP, DecisionNode
-from mctspy.utilities import random_rollout_value
+from mctspy.utilities import random_rollout_value, pull_childrens_belief_state
 from simulations.tic_tac import TicTac
 
 
@@ -15,11 +15,12 @@ def report(message):
 n_games = 1
 wins = 0
 verbose = False
+promote_opponent_child = True
 
 game = TicTac()
 # TODO: even 1000 iterations we don't try every opponents move,
 #       that resutls in key error! WTF? 1000 iterations, Carl!
-n_iters = 10000
+n_iters = 1000
 seed = 1337
 my_agent_id = 0  # We play for X
 
@@ -73,14 +74,24 @@ for i in range(n_games):
         if game.state_is_terminal(state):
             break
 
-        # "Promote" next node to the MCTS root
-        history = node.history
-        node = node.children[action_sense].children[observation_sense]
-        node = node.children[action_move].children[observation_move]
-        # We discard the opponent history since we don't know it for the Blind Chess simulator
-        node.history = history
-        # At this point, our node contains the correct belief state (with opponenet's move)
-        # and correct history, i.e. where the last obesrcation is actually one recorded by our agent
+        if promote_opponent_child:
+            # "Promote" next node to the MCTS root
+            history = node.history
+            node = node.children[action_sense].children[observation_sense]
+            node = node.children[action_move].children[observation_move]
+            # We discard the opponent history since we don't know it for the Blind Chess simulator
+            node.history = history
+            # At this point, our node contains the correct belief state (with opponenet's move)
+            # and correct history, i.e. where the last observation is actually one recorded by our agent
+
+        else:
+            updated_beliefe_state = pull_childrens_belief_state(node, my_agent_id)
+            # We still don't know which opponent's node to select,
+            # so we probably need to discard the built sub-tree altogether.
+            # TODO: in Blind Chess we can see move action and observation, 
+            #       so maybe we can sample the branch that has the same move action and observation
+            #       important! (we don't have these opponent moves, if opponent didn't take our figure)
+            node = DecisionNode(None, 0, {}, my_agent_id, updated_beliefe_state, node.history)
 
         # Problems TODO:
         # 1. In Blind Chess we don't get opponents "sense" action and observation
