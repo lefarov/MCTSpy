@@ -11,6 +11,8 @@ wins = 0
 verbose = False
 
 game = TicTac()
+# TODO: even with this amount of iterations we don't try every opponents move,
+#       that resutls in key error! WTF? 10000 iterations, Carl!
 n_iters = 10000
 seed = 1337
 my_agent_id = 0  # We play for X
@@ -65,10 +67,6 @@ for i in range(n_games):
         # --- End of the hidden part ---
 
         # "Promote" next node to the MCTS root
-        # Problems TODO:
-        # 1. In Blind Chess we don't get opponents "sense" action and observation
-        # 2. Even if would get them, what if we didn't add the node in our tree
-        #    which was actually selected by opponenet? What would happen to belief state?
         history = node.history
         node = node.children[action_sense].children[observation_sense]
         node = node.children[action_move].children[observation_move]
@@ -77,6 +75,14 @@ for i in range(n_games):
         # At this point, our node contains the correct belief state (with opponenet's move)
         # and correct history, i.e. where the last obesrcation is actually one recorded by our agent
 
+        # Problems TODO:
+        # 1. In Blind Chess we don't get opponents "sense" action and observation
+        # 2. Even if would get them, what if we didn't add the node in our tree
+        #    which was actually selected by opponenet? What would happen to belief state?
+        # Possible solutions:
+        # 2. Should we then construct belief state that include all possible opponents moves?
+        #    But all possible moves from which state? If in our current belief state more than
+        #    one particle, it will exlode!
 
     report(f"Winner: {state.winnerId}")
     if state.winnerId == 0:
