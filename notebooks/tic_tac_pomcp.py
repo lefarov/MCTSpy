@@ -6,14 +6,14 @@ from mctspy.tree import POMCP, DecisionNode
 from mctspy.utilities import random_rollout_value
 from simulations.tic_tac import *
 
-N = 100
+N = 5
 wins = 0
 verbal = False
 
 game = TicTac()
 seed = 1337
 mcts = POMCP(
-    game, uct_action, partial(random_rollout_value, env=game, seed=1337), 20
+    game, uct_action, partial(random_rollout_value, env=game, seed=1337), 1000
 )
 
 def report(message):
@@ -25,7 +25,7 @@ for i in range(N):
     state, _ = game.get_initial_state()
     while not game.state_is_terminal(state):
 
-        root = DecisionNode(None, 0, {}, state.nextAgentId, [state], [])
+        root = DecisionNode(None, 0, {}, state.nextAgentId, [state], [None])
         mcts.build_tree(root)
 
         # tree.

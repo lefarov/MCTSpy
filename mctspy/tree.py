@@ -232,26 +232,36 @@ class POMCP:
 
         # Sample one of the Belief state
         state = random.choice(current_node.belief_state)
+        agent_histories = defaultdict(list)
+        # Copy recorded node history up to this node
+        agent_histories[node.agent_id].extend(node.history)
 
         while not simulator.state_is_terminal(state):
             
             current_node.visits += 1
             available_actions = simulator.enumerate_actions(state)
+            agent_id = current_node.agent_id
             
             # Decision Node with untried actions is found
             if not current_node.children.keys() == available_actions:
                 action = random.choice(tuple(available_actions - current_node.children.keys()))
                 next_state, _, reward, *_ = simulator.step(state, action)
                 
-                chance_node = ChanceNode(action, 1, reward, 0.0, {}, current_node.agent_id)
+                chance_node = ChanceNode(
+                    action=action, 
+                    visits=1, 
+                    reward=reward, 
+                    value=0.0, 
+                    children={}, 
+                    agent_id=agent_id
+                )
+
                 current_node.children[action] = chance_node
-                
                 stack.append(chance_node)
 
                 # Return the estimate of a successor state value
                 return state_value_estimator(next_state)
         
-            # TODO: add history to the current node to make it available to Policy
             action = action_selection_policy(current_node)
             next_state, next_observation, reward, next_agent_id = simulator.step(state, action)
             
@@ -261,18 +271,30 @@ class POMCP:
             
             stack.append(chance_node)
 
+            # Add action and observation to the agent's history
+            agent_histories[agent_id].extend((action, next_observation))
+            # If we do switch the agents
+            if next_agent_id != agent_id:
+                # Add obervation to the next agent's history
+                agent_histories[next_agent_id].append(next_observation)
+
+            # Add new Decision Node if not existing
             if next_observation not in chance_node.children:
                 chance_node.children[next_observation] = DecisionNode(
-                    next_observation, 0, {}, next_agent_id, []
+                    observation=next_observation,
+                    visits=0,
+                    children={},
+                    agent_id=next_agent_id,
+                    belief_state=[],
+                    history=agent_histories[agent_id]
                 )
 
             current_node = chance_node.children[next_observation]
 
             # Add actual sampled state to the belief state
-            # TODO: use heuristic to add probable particles
+            # TODO: use heuristic to add possible particles (by perturbation) ?
             current_node.belief_state.append(next_state)
             # Transition into the next state
-            # TODO: should we resample from the belief instead?
             state = next_state
 
         # Decision Node with terminal state is found. Return the value computed by simulator.
