@@ -6,7 +6,7 @@ from mctspy.tree import POMCP, DecisionNode
 from mctspy.utilities import random_rollout_value
 from simulations.tic_tac import TicTac
 
-n_games = 5
+n_games = 1
 wins = 0
 verbose = False
 
@@ -29,6 +29,8 @@ for i in range(n_games):
 
     node = mcts_root
     while not game.state_is_terminal(state):
+
+        # TODO: make TicTacState hashable and assert that state is in node's belief state
 
         # Extend tree from current node. 
         # I.e. if node is not an initial state, some tree already exists
@@ -60,6 +62,7 @@ for i in range(n_games):
         action_move = random.choice(tuple(game.enumerate_actions(state)))
         state, observation_move, reward, agent_id = game.step(state, action_move)
         assert agent_id == my_agent_id
+        # --- End of the hidden part ---
 
         # "Promote" next node to the MCTS root
         # Problems TODO:
@@ -69,7 +72,10 @@ for i in range(n_games):
         history = node.history
         node = node.children[action_sense].children[observation_sense]
         node = node.children[action_move].children[observation_move]
+        # We discard the opponent history since we don't know it for the Blind Chess simulator
         node.history = history
+        # At this point, our node contains the correct belief state (with opponenet's move)
+        # and correct history, i.e. where the last obesrcation is actually one recorded by our agent
 
 
     report(f"Winner: {state.winnerId}")
