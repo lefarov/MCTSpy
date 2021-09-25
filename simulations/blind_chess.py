@@ -29,7 +29,7 @@ timers: str
 
 """
 GameState = namedtuple(
-    "GameState", ("board_state", "history", "start_time", "timers", "turn")
+    "GameState", ("board", "history", "start_time", "timers")
 )
 
 GameAction = namedtuple("GameAction", ("type", "action"))
