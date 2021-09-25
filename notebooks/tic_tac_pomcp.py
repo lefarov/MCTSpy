@@ -4,37 +4,69 @@ from functools import partial
 from mctspy.policies import uct_action
 from mctspy.tree import POMCP, DecisionNode
 from mctspy.utilities import random_rollout_value
-from simulations.tic_tac import *
+from simulations.tic_tac import TicTac
 
 N = 5
 wins = 0
-verbal = False
+verbose = False
 
 game = TicTac()
 seed = 1337
-mcts = POMCP(
-    game, uct_action, partial(random_rollout_value, env=game, seed=1337), 1000
-)
+my_agent_id = 0  # We play for X
+
+state_value_estimator = partial(random_rollout_value, env=game, seed=seed)
+mcts = POMCP(game, uct_action, state_value_estimator, 1000)
 
 def report(message):
-    if verbal:
+    if verbose:
         print(message)
 
 for i in range(N):
 
     state, _ = game.get_initial_state()
+    mcts_root = DecisionNode(None, 0, {}, state.nextAgentId, [state], [None])
+
+    node = mcts_root
     while not game.state_is_terminal(state):
 
-        root = DecisionNode(None, 0, {}, state.nextAgentId, [state], [None])
-        mcts.build_tree(root)
+        # Extend tree from current node. 
+        # I.e. if node is not an initial state, some tree already exists
+        mcts.build_tree(node)
 
-        # tree.
-        # nextAction = random.choice(tuple(actions))
-        nextAction = uct_action(root, 0)
-        report(f"Next action player #{state.nextAgentId}: {nextAction}")
-        state, obs, reward, _ = game.step(state, nextAction)
-        report(f"Reward: {reward} Obs: {obs}")
-        report(state)
+        # Select the best "sense" action acording to UCB with 0 ecxploration
+        action = uct_action(node, 0)
+        state, observation, reward, agent_id = game.step(state, action)
+        assert agent_id == my_agent_id
+
+        # Move into Decision Node for "move" action
+        node = node.children[action].children[observation]
+
+        # Select the best "move" action
+        action = uct_action(node, 0)
+        state, observation, reward, agent_id = game.step(state, action)
+        assert agent_id != my_agent_id
+
+        # Move into Decision Node for oponnent's "sense"
+        node = node.children[action].children[observation]
+
+        # Opponent's random "sense"
+        action_sense = random.choice(tuple(game.enumerate_actions(state)))
+        state, observation_sense, reward, agent_id = game.step(state, action_sense)
+        assert agent_id != my_agent_id
+        
+        # Opponent's random "move"
+        action_move = random.choice(tuple(game.enumerate_actions(state)))
+        state, observation_move, reward, agent_id = game.step(state, action_move)
+        assert agent_id == my_agent_id
+
+        # "Promote" next node to the MCTS root
+        # Problems TODO:
+        # 1. In Blind Chess we don't get opponents "sense" action and observation
+        # 2. Even if would get them, what if we didn't add the node in our tree
+        #    which was actually selected by opponenet? What would happen to belief state?
+        node = node.children[action_sense].children[observation_sense]
+        node = node.children[action_move].chilldren[observation_move]
+
 
     report(f"Winner: {state.winnerId}")
     if state.winnerId == 0:
