@@ -6,23 +6,25 @@ from mctspy.tree import POMCP, DecisionNode
 from mctspy.utilities import random_rollout_value
 from simulations.tic_tac import TicTac
 
+
+def report(message):
+    if verbose:
+        print(message)
+
+
 n_games = 1
 wins = 0
 verbose = False
 
 game = TicTac()
-# TODO: even with this amount of iterations we don't try every opponents move,
-#       that resutls in key error! WTF? 10000 iterations, Carl!
+# TODO: even 1000 iterations we don't try every opponents move,
+#       that resutls in key error! WTF? 1000 iterations, Carl!
 n_iters = 10000
 seed = 1337
 my_agent_id = 0  # We play for X
 
 state_value_estimator = partial(random_rollout_value, env=game, seed=seed)
 mcts = POMCP(game, uct_action, state_value_estimator, n_iters)
-
-def report(message):
-    if verbose:
-        print(message)
 
 for i in range(n_games):
 
@@ -65,6 +67,11 @@ for i in range(n_games):
         state, observation_move, reward, agent_id = game.step(state, action_move)
         assert agent_id == my_agent_id
         # --- End of the hidden part ---
+
+        # Check if the game was ended by me or opponent
+        # (we need this additional check since the children in MCTS will be empty in this case)
+        if game.state_is_terminal(state):
+            break
 
         # "Promote" next node to the MCTS root
         history = node.history
