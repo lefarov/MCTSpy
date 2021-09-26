@@ -3,7 +3,7 @@ from functools import partial
 
 from mctspy.policies import uct_action
 from mctspy.tree import POMCP, DecisionNode
-from mctspy.utilities import random_rollout_value, pull_childrens_belief_state
+from mctspy.utilities import random_rollout_value, pull_children_belief_state
 from simulations.tic_tac import TicTac
 
 
@@ -19,7 +19,7 @@ promote_opponent_child = True
 
 game = TicTac()
 # TODO: even 1000 iterations we don't try every opponents move,
-#       that resutls in key error! WTF? 1000 iterations, Carl!
+#       that results in key error! WTF? 1000 iterations, Carl!
 n_iters = 1000
 seed = 1337
 my_agent_id = 0  # We play for X
@@ -30,7 +30,7 @@ mcts = POMCP(game, uct_action, state_value_estimator, n_iters)
 for i in range(n_games):
 
     state, _ = game.get_initial_state()
-    mcts_root = DecisionNode(None, 0, {}, state.nextAgentId, [state], [None])
+    mcts_root = DecisionNode(None, 0, {}, state.nextAgentId, [state], {state.nextAgentId: [None]})
 
     node = mcts_root
     while not game.state_is_terminal(state):
@@ -41,7 +41,7 @@ for i in range(n_games):
         # I.e. if node is not an initial state, some tree already exists
         mcts.build_tree(node)
 
-        # Select the best "sense" action acording to UCB with 0 ecxploration
+        # Select the best "sense" action according to UCB with 0 exploration
         action = uct_action(node, 0)
         state, observation, reward, agent_id = game.step(state, action)
         assert agent_id == my_agent_id
@@ -54,7 +54,7 @@ for i in range(n_games):
         state, observation, reward, agent_id = game.step(state, action)
         assert agent_id != my_agent_id
 
-        # Move into Decision Node for oponnent's "sense"
+        # Move into Decision Node for opponent's "sense"
         node = node.children[action].children[observation]
 
         # --- This part is hidden in the true simulator ---
@@ -81,22 +81,22 @@ for i in range(n_games):
             node = node.children[action_move].children[observation_move]
             # We discard the opponent history since we don't know it for the Blind Chess simulator
             node.history = history
-            # At this point, our node contains the correct belief state (with opponenet's move)
+            # At this point, our node contains the correct belief state (with opponent's move)
             # and correct history, i.e. where the last observation is actually one recorded by our agent
 
         else:
-            updated_beliefe_state = pull_childrens_belief_state(node, my_agent_id)
+            updated_belief_state = pull_children_belief_state(node, my_agent_id, last_observation=observation_move)
             # We still don't know which opponent's node to select,
             # so we probably need to discard the built sub-tree altogether.
             # TODO: in Blind Chess we can see move action and observation, 
             #       so maybe we can sample the branch that has the same move action and observation
             #       important! (we don't have these opponent moves, if opponent didn't take our figure)
-            node = DecisionNode(None, 0, {}, my_agent_id, updated_beliefe_state, node.history)
+            node = DecisionNode(None, 0, {}, my_agent_id, updated_belief_state, node.history)
 
         # Problems TODO:
         # 1. In Blind Chess we don't get opponents "sense" action and observation
         # 2. Even if would get them, what if we didn't add the node in our tree
-        #    which was actually selected by opponenet? What would happen to belief state?
+        #    which was actually selected by opponent? What would happen to belief state?
         # Possible solutions:
         # 2. Should we then construct belief state that include all possible opponents moves?
         #    But all possible moves from which state? If in our current belief state more than

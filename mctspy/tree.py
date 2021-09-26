@@ -34,7 +34,7 @@ class DecisionNode:
     children: t.Dict
     agent_id: t.Hashable
     belief_state: t.List[t.Hashable] = None
-    history: t.List[t.Hashable] = None
+    history: t.Dict[t.Hashable, t.List] = None
 
 
 @dataclass
@@ -234,7 +234,7 @@ class POMCP:
         state = random.choice(current_node.belief_state)
         agent_histories = defaultdict(list)
         # Copy recorded node history up to this node
-        agent_histories[node.agent_id].extend(node.history)
+        agent_histories.update(node.history)
 
         while not simulator.state_is_terminal(state):
             
@@ -275,7 +275,7 @@ class POMCP:
             agent_histories[agent_id].extend((action, next_observation))
             # If we do switch the agents
             if next_agent_id != agent_id:
-                # Add obervation to the next agent's history
+                # Add observation to the next agent's history
                 agent_histories[next_agent_id].append(next_observation)
 
             # Add new Decision Node if not existing
@@ -286,7 +286,7 @@ class POMCP:
                     children={},
                     agent_id=next_agent_id,
                     belief_state=[],
-                    history=agent_histories[agent_id]
+                    history=agent_histories
                 )
 
             current_node = chance_node.children[next_observation]
