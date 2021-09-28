@@ -217,8 +217,9 @@ class BlindChessMP:
     """ Opponent should be played by the same MCTS tree
 
     TODO: 
-    1. opponenet does get the full state back (i.e. observation == full state)
-    2. opponent only does move actions
+    1. make sure time cannot be exceeded (this should be controlled by MCTS)
+    2. opponenet does get the full state back (i.e. observation == full state)?
+    3. opponent only does move actions?
     """
 
     def __init__(
@@ -235,7 +236,10 @@ class BlindChessMP:
             True: self.game.board.copy(), False: self.game.board.copy()
         }
         
-        self.observed_boards[False].turn = False
+        # Set correct turns on boards
+        for color, board in self.observed_boards.items():
+            board.turn = color
+
         self.game.start()
 
     def reset(self, state: MPGameState):
@@ -258,6 +262,7 @@ class BlindChessMP:
         )
 
     def step(self, state: MPGameState, action: MPGameAction, reset: bool=False):
+        # TODO: make it a decorator
         # Reset observable and true boards to the current state
         if reset:
             self.reset(state)
@@ -287,8 +292,11 @@ class BlindChessMP:
 
             if taken_move is not None:
                 self.observed_boards[state.turn].push(taken_move)
-                # Push will switch the color of the board, so we reset it back
-                self.observed_boards[state.turn].turn = state.turn
+        
+            # TODO: make it a decorator
+            # Make sure that turns didn't change on observed boards
+            for color, board in self.observed_boards.items():
+                board.turn = color
 
             # End player's turn
             self.game.end_turn()
