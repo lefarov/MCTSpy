@@ -1,7 +1,9 @@
 import chess
 import json
+import enum
+import typing
 
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from reconchess import (
     LocalGame,
     GameHistoryEncoder, 
@@ -198,6 +200,19 @@ class BlindChessSP:
         return {self.player_color: value}
 
 
+class BlindChessActionType(enum.IntEnum):
+    Sense = 0
+    Move = 1
+
+
+MPGameState = namedtuple(
+    "MPGameState", 
+    ("true_board", "white_board", "black_board", "turn", "action_type")
+)
+
+MPGameAction = namedtuple("MPGameAction", ("sense", "move"))
+
+
 class BlindChessMP:
     """ Opponent should be played by the same MCTS tree
 
@@ -216,81 +231,98 @@ class BlindChessMP:
         self.game = LocalGame(seconds_per_player)
         self.game.store_players(white_name, black_name)
 
-        self.white_board = self.game.board.copy()
-        self.black_board = self.game.board.copy()
-        self.boards_dict = {True: self.white_board, False: self.black_board}
+        self.observed_boards = {
+            True: self.game.board.copy(), False: self.game.board.copy()
+        }
 
         self.game.start()
 
-    def reset(
-        self,
-        state: GameState,
-        observation_white: chess._BoardState,
-        observation_black: chess._BoardState,
-    ):
+    def reset(self, state: MPGameState):
         """Reset the game to the given state.
-        
-        TODO: should we add move stack to the observation?
         """
-        # restore the observable and true boards
-        observation_white.restore(self.white_board)
-        observation_black.resotre(self.black_board)
-        state.board.restore(self.game.board)
-
-        # Restore the history
-        restored_history = json.loads(state.history, cls=GameHistoryDecoder)
-        setattr(
-            self.game,
-            f"_{self.game.__class__.__name__}__game_history",
-            restored_history
-        )
-
-        # Restore the sutrat time of the current turn
-        self.game.current_turn_start_time = state.start_time
-
-        # Restore timers
-        timers = json.loads(state.timers)
-        self.game.seconds_left_by_color.update(timers)
+        state.true_board.restore(self.game.board)
+        state.white_board.restore(self.observed_boards[True])
+        state.black_board.resotre(self.observed_boards[False])
 
         # Restore the turn
         self.game.turn = state.turn
 
-    def get_state(self):
-        """Get the complete game state."""
-        # Dump the game history to JSON
-        history = getattr(self.game, f"_{self.game.__class__.__name__}__game_history",)
-        history_dump = json.dumps(history, cls=GameHistoryEncoder)
-
-        # Dump timers to JSON
-        timers = json.dumps(self.game.seconds_left_by_color)
-
-        return GameState(
-            board=self.game.board._board_state(),
-            history=history_dump,
-            start_time=self.game.current_turn_start_time,
-            timers=timers,
-            turn=self.game.turn
+    def _get_state(self, action_type):
+        return MPGameState(
+            true_board=self.game.board._board_state(),
+            white_board=self.observed_boards[True]._board_state(),
+            black_board=self.observed_boards[False]._board_state(),
+            turn=self.game.turn,
+            action_type=action_type,
         )
 
-    def step(self, action: GameAction):
+    def step(self, state: MPGameState, action: MPGameAction, reset: bool=False):
+        # Reset observable and true boards to the current state
+        if reset:
+            self.reset(state)
+        
         reward = 0
-
-        if action.type == "sense":
-            assert isinstance(action.action, int)
+        if state.action_type == BlindChessActionType.Sense:
+            assert isinstance(action.sense, int)
 
             # Apply sense action and add the result to the observable board
-            for square, piece in self.game.sense(action.action):
-                self.boards_dict[self.game.turn].set_piece_at(square, piece)
+            for square, piece in self.game.sense(action.sense):
+                self.observed_boards[state.turn].set_piece_at(square, piece)
+
+            action_type = BlindChessActionType.Move
         
-        elif action.type == "move":
-            assert isinstance(action.action, chess.Move)
+        elif state.action_type == BlindChessActionType.Move:
+            assert isinstance(action.move, chess.Move)
 
             # Apply move action and update the board's stack
             _, taken_move, capture_square = self.game.move(action.action)
+
+            # If captured any piece
+            # TODO: handle the surrigate reward for capturing the piece
+            if capture_square is not None:
+                # Remove it from observable boards
+                for _, board in self.observed_boards.items():
+                    board.remove_piece_at(capture_square)
+
             if taken_move is not None:
-                self.observed_board.push(taken_move)
+                self.observed_boards[state.turn].push(taken_move)
                 # Push will switch the color of the board, so we reset it back
-                self.observed_board.turn = self.player_color
+                self.observed_boards[state.turn].turn = state.turn
+
+            # End player's turn
+            self.game.end_turn()
+
+            action_type = BlindChessActionType.Sense
 
         else:
             raise ValueError("Unsupported action type.")
+
+        return self._get_state(action_type), self.observed_boards, reward, self.game.turn
+
+    def is_terminal(self, state, reset=False):
+        if reset:
+            self.reset(state)
+
+        return self.game.is_over()
+
+    def enumerate_actions(self, state, reset=False):
+        if reset:
+            self.reset(state)
+
+        if state.action_type == BlindChessActionType.Sense:
+            return self.game.sense_actions()
+        else:
+            return self.game.move_actions()
+
+    def get_initial_state(self):
+        return self._get_state(BlindChessActionType.Sense)
+
+    def get_agent_num(self):
+        return 2
+
+    def get_current_agent(self):
+        return self.game.turn
+
+    def get_terminal_value(self):
+        winner_color = self.game.get_winner_color()
+        return {winner_color: 100, not winner_color: -100}
