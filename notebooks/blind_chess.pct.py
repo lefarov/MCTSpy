@@ -98,20 +98,22 @@ from simulations.blind_chess import BlindChessMP, MPGameAction
 sim = BlindChessMP()
 state = sim.get_initial_state()
 
-# %%
-board = chess.Board()
-state.white_board.restore(board)
+# %% Make two moves by each player
+for i in range(4):
+    sense_actions = sim.enumerate_actions(state)
+    sense = random.choice(sense_actions)
+    state, obs, rew, player_id = sim.step(
+        state, MPGameAction(sense=sense, move=None)
+    )
 
-# %%
-sense_actions = sim.enumerate_actions(state)
-sense = random.choice(sense_actions)
-state, obs, rew, player_id = sim.step(
-    state, MPGameAction(sense=sense, move=None)
-)
-# %%
-move_actions = sim.enumerate_actions(state)
-move = random.choice(move_actions)
-state, obs, rew, player_id = sim.step(
-    state, MPGameAction(sense=None, move=move)
-)
+    move_actions = sim.enumerate_actions(state)
+    move = random.choice(move_actions)
+    state, obs, rew, player_id = sim.step(
+        state, MPGameAction(sense=None, move=move)
+    )
+
+# %% Check the observations and the true board state
+board = chess.Board()
+state.true_board.restore(board)
+
 # %%

@@ -234,7 +234,8 @@ class BlindChessMP:
         self.observed_boards = {
             True: self.game.board.copy(), False: self.game.board.copy()
         }
-
+        
+        self.observed_boards[False].turn = False
         self.game.start()
 
     def reset(self, state: MPGameState):
@@ -275,7 +276,7 @@ class BlindChessMP:
             assert isinstance(action.move, chess.Move)
 
             # Apply move action and update the board's stack
-            _, taken_move, capture_square = self.game.move(action.action)
+            _, taken_move, capture_square = self.game.move(action.move)
 
             # If captured any piece
             # TODO: handle the surrigate reward for capturing the piece
@@ -326,3 +327,7 @@ class BlindChessMP:
     def get_terminal_value(self):
         winner_color = self.game.get_winner_color()
         return {winner_color: 100, not winner_color: -100}
+
+
+def board_to_observation(board: chess.Board):
+    pass
