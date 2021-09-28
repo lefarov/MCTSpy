@@ -2,6 +2,7 @@ import chess
 import json
 import enum
 import typing
+import numpy as np
 
 from collections import namedtuple, defaultdict
 from reconchess import (
@@ -253,6 +254,7 @@ class BlindChessMP:
         self.game.turn = state.turn
 
     def _get_state(self, action_type):
+        # TODO: use FEN strings also for state?
         return MPGameState(
             true_board=self.game.board._board_state(),
             white_board=self.observed_boards[True]._board_state(),
@@ -306,7 +308,10 @@ class BlindChessMP:
         else:
             raise ValueError("Unsupported action type.")
 
-        return self._get_state(action_type), self.observed_boards, reward, self.game.turn
+        state = self._get_state(action_type)
+        observation = {True: state.white_board, False: state.black_board}
+
+        return self._get_state(action_type), observation, reward, self.game.turn
 
     def is_terminal(self, state, reset=False):
         if reset:
@@ -337,5 +342,32 @@ class BlindChessMP:
         return {winner_color: 100, not winner_color: -100}
 
 
-def board_to_observation(board: chess.Board):
-    pass
+# I know how dict-comprehension works, I just don't like how it looks
+PIECE_INDEX = {" ": 0}
+for i, symbol in enumerate(chess.UNICODE_PIECE_SYMBOLS.keys()):
+    PIECE_INDEX[symbol] = i + 1
+
+
+def board_state_to_npboard(board_state: chess._BoardState, piece_index: typing.Dict):
+    board = chess.Board.empty()
+    board_state.restore(board)
+
+    return board_to_npboard(board, piece_index)
+
+
+def fen_to_npboard(fen, piece_index=PIECE_INDEX):
+    board = chess.Board.empty()
+    board.set_fen(fen)
+
+    return board_to_npboard(board, piece_index)
+
+
+def board_to_npboard(board, piece_index=PIECE_INDEX):
+    board_index_tensor = np.zeros((64, ), dtype=np.int32)
+    board_onehot_tensor = np.zeros((64, len(piece_index)))
+
+    for square, piece in board.piece_map().items():
+        board_index_tensor[square] = piece_index[piece.symbol()]
+        board_onehot_tensor[square][piece_index[piece.symbol()]] = 1
+
+    return board_index_tensor.reshape(8, 8), board_onehot_tensor.reshape(8, 8, -1)

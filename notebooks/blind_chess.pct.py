@@ -1,4 +1,5 @@
 # %% imports
+import torch
 import json
 import random
 import numpy as np
@@ -15,6 +16,15 @@ from reconchess import (
     GameHistory, 
     GameHistoryEncoder, 
     GameHistoryDecoder,
+)
+
+from simulations.blind_chess import (
+    BlindChessMP, 
+    MPGameAction, 
+    fen_to_npboard, 
+    board_state_to_npboard,
+    board_to_npboard,
+    PIECE_INDEX
 )
 # %%
 
@@ -92,8 +102,6 @@ sim2.reset(state, obs)
 # %% [markdown]
 # ## Multiplayer Game
 
-from simulations.blind_chess import BlindChessMP, MPGameAction
-
 # %%
 sim = BlindChessMP()
 state = sim.get_initial_state()
@@ -116,4 +124,9 @@ for i in range(4):
 board = chess.Board()
 state.true_board.restore(board)
 
-# %%
+# %% Construct observation
+obs_embedding = torch.nn.Embedding(13, 4)
+board_ind, board_ohe = board_to_npboard(sim.game.board)
+# Learnable embeddings for board observation
+# TODO: can we pretrain it?
+emb = obs_embedding(torch.LongTensor(board_ind))
