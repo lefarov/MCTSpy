@@ -1,4 +1,4 @@
-# %% imports
+#%% imports
 import torch
 import json
 import random
@@ -26,7 +26,7 @@ from simulations.blind_chess import (
     board_to_npboard,
     PIECE_INDEX
 )
-# %%
+#%%
 
 game = LocalGame()
 game_hist = GameHistory()
@@ -61,24 +61,24 @@ s.add(board_move_stack)
 board_state.restore(board_copy)
 board_copy.move_stack = list(board_move_stack) 
 
-# %% Board to observation
+#%% Board to observation
 
 
-# %% [markdown]
+#%% [markdown]
 # 1. Can we save restore board? (board as a state of MCTS)?
 #   1.1 Manually go over the figures and restore the board
 # 2. How should we deal with actual board / visible board?
 
-# %% [markdown]
+#%% [markdown]
 # ## Step down manually through MCTS simulator for Blind Chess
 from simulations.blind_chess import BlindChessSP, capture_reward
 from agents.blind_chess import RandomBot, TroutBot
 
-# %%
+#%%
 opponent = RandomBot()
 sim = BlindChessSP(opponent, capture_reward)
 
-# %%
+#%%
 sense_actions = sim.enumerate_actions()
 sense = random.choice(sense_actions)
 state, obs, rew, player_id = sim.step(sense)
@@ -86,27 +86,27 @@ state, obs, rew, player_id = sim.step(sense)
 # Assert that action type has changed
 assert not sim.sense_action
 
-# %%
+#%%
 move_actions = sim.enumerate_actions()
 move = random.choice(move_actions)
 state, obs, rew, player_id = sim.step(move)
 
-# %%
+#%%
 opponent2 = RandomBot()
 sim2 = BlindChessSP(opponent2, capture_reward)
-# %%
+#%%
 sim2.reset(state, obs)
-# %%
+#%%
 
 
-# %% [markdown]
+#%% [markdown]
 # ## Multiplayer Game
 
-# %%
+#%%
 sim = BlindChessMP()
 state = sim.get_initial_state()
 
-# %% Make two moves by each player
+#%% Make two moves by each player
 for i in range(4):
     sense_actions = sim.enumerate_actions(state)
     sense = random.choice(sense_actions)
@@ -120,16 +120,16 @@ for i in range(4):
         state, MPGameAction(sense=None, move=move)
     )
 
-# %% Check the observations and the true board state
+#%% Check the observations and the true board state
 board = chess.Board()
 state.true_board.restore(board)
 
-# %% Construct observation
+#%% Construct observation
 obs_embedding = torch.nn.Embedding(len(PIECE_INDEX), 4)
 board_ind, board_ohe = board_to_npboard(sim.game.board)
 # Learnable embeddings for board observation
 # TODO: can we pretrain it?
 emb = obs_embedding(torch.as_tensor(board_ind, dtype=torch.long))
-# %%
+#%%
 
 act_embedding = torch.nn.Embedding()

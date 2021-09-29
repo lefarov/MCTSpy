@@ -1,3 +1,5 @@
+import typing as t
+
 import chess
 import json
 import enum
@@ -7,11 +9,13 @@ import numpy as np
 from collections import namedtuple, defaultdict
 from reconchess import (
     LocalGame,
-    GameHistoryEncoder, 
+    GameHistoryEncoder,
     GameHistoryDecoder,
     Player,
-    play_turn,
+    play_turn, WinReason,
 )
+
+from mctspy.simluator import SimulatorInterface
 
 
 def capture_reward(piece: chess.Piece, game: LocalGame):
@@ -214,7 +218,7 @@ MPGameState = namedtuple(
 MPGameAction = namedtuple("MPGameAction", ("sense", "move"))
 
 
-class BlindChessMP:
+class BlindChessMP(SimulatorInterface):
     """ Opponent should be played by the same MCTS tree
 
     TODO: 
@@ -236,7 +240,7 @@ class BlindChessMP:
         self.observed_boards = {
             True: self.game.board.copy(), False: self.game.board.copy()
         }
-        
+
         # Set correct turns on boards
         for color, board in self.observed_boards.items():
             board.turn = color
@@ -248,7 +252,7 @@ class BlindChessMP:
         """
         state.true_board.restore(self.game.board)
         state.white_board.restore(self.observed_boards[True])
-        state.black_board.resotre(self.observed_boards[False])
+        state.black_board.restore(self.observed_boards[False])
 
         # Restore the turn
         self.game.turn = state.turn
@@ -268,7 +272,7 @@ class BlindChessMP:
         # Reset observable and true boards to the current state
         if reset:
             self.reset(state)
-        
+
         reward = 0
         if state.action_type == BlindChessActionType.Sense:
             assert isinstance(action.sense, int)
@@ -278,7 +282,7 @@ class BlindChessMP:
                 self.observed_boards[state.turn].set_piece_at(square, piece)
 
             action_type = BlindChessActionType.Move
-        
+
         elif state.action_type == BlindChessActionType.Move:
             assert isinstance(action.move, chess.Move)
 
@@ -294,7 +298,7 @@ class BlindChessMP:
 
             if taken_move is not None:
                 self.observed_boards[state.turn].push(taken_move)
-        
+
             # TODO: make it a decorator
             # Make sure that turns didn't change on observed boards
             for color, board in self.observed_boards.items():
@@ -313,33 +317,42 @@ class BlindChessMP:
 
         return self._get_state(action_type), observation, reward, self.game.turn
 
-    def is_terminal(self, state, reset=False):
+    def enumerate_actions(self, state, reset=True):
+        if reset:
+            self.reset(state)
+
+        if state.action_type == BlindChessActionType.Sense:
+            return {MPGameAction(a, None) for a in self.game.sense_actions()}
+        else:
+            return {MPGameAction(None, a) for a in self.game.move_actions()}
+
+    def get_initial_state(self):
+        return self._get_state(BlindChessActionType.Sense), self.game.turn
+
+    def get_agent_num(self):
+        return 2
+
+    def get_current_agent(self, state: MPGameState, reset=True):
+        if reset:
+            self.reset(state)
+
+        return self.game.turn
+
+    def state_is_terminal(self, state: MPGameState, reset=True):
         if reset:
             self.reset(state)
 
         return self.game.is_over()
 
-    def enumerate_actions(self, state, reset=False):
+    def get_terminal_value(self, state: MPGameState, reset=True):
         if reset:
             self.reset(state)
 
-        if state.action_type == BlindChessActionType.Sense:
-            return self.game.sense_actions()
-        else:
-            return self.game.move_actions()
+        if self.game.get_win_reason() == WinReason.TIMEOUT:
+            return {True: 0, False: 0}
 
-    def get_initial_state(self):
-        return self._get_state(BlindChessActionType.Sense)
-
-    def get_agent_num(self):
-        return 2
-
-    def get_current_agent(self):
-        return self.game.turn
-
-    def get_terminal_value(self):
         winner_color = self.game.get_winner_color()
-        return {winner_color: 100, not winner_color: -100}
+        return {winner_color: 1, not winner_color: -1}
 
 
 # I know how dict-comprehension works, I just don't like how it looks
@@ -371,3 +384,10 @@ def board_to_npboard(board, piece_index=PIECE_INDEX):
         board_onehot_tensor[square][piece_index[piece.symbol()]] = 1
 
     return board_index_tensor.reshape(8, 8), board_onehot_tensor.reshape(8, 8, -1)
+
+
+def action_to_npaction(action: chess.Move) -> np.ndarray:
+    action_ohe = np.zeros((64, 64), dtype=np.int32)
+    action_ohe[action.from_square, action.to_square] = 1
+
+    return action_ohe

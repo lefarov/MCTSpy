@@ -264,6 +264,7 @@ class POMCP:
         
             action = action_selection_policy(current_node)
             next_state, next_observation, reward, next_agent_id = simulator.step(state, action)
+            next_observation = next_observation[next_agent_id]
             
             chance_node = current_node.children[action]
             chance_node.reward = reward
