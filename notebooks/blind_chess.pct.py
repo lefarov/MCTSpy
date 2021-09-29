@@ -125,8 +125,11 @@ board = chess.Board()
 state.true_board.restore(board)
 
 # %% Construct observation
-obs_embedding = torch.nn.Embedding(13, 4)
+obs_embedding = torch.nn.Embedding(len(PIECE_INDEX), 4)
 board_ind, board_ohe = board_to_npboard(sim.game.board)
 # Learnable embeddings for board observation
 # TODO: can we pretrain it?
-emb = obs_embedding(torch.LongTensor(board_ind))
+emb = obs_embedding(torch.as_tensor(board_ind, dtype=torch.long))
+# %%
+
+act_embedding = torch.nn.Embedding()
