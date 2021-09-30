@@ -1,15 +1,22 @@
 import copy
 import typing as t
 from dataclasses import dataclass, field
+from enum import IntEnum
+
+from mctspy.simluator import SimulatorInterface
 
 
-TicTacAction = int
+class TicTacActionType(IntEnum):
+    Unknown = 0
+    Sense = 1
+    Move = 2
 
 
 @dataclass
 class TicTacState:
     board: t.List[int] = field(default_factory=lambda: [TicTac.EmptyCell] * (TicTac.BoardSize ** 2))
 
+    nextActionType: TicTacActionType = TicTacActionType.Sense
     nextAgentId: int = 0
     winnerId: t.Optional[int] = None
 
@@ -23,25 +30,34 @@ class TicTacState:
 
         return s
 
-    def __hash__(self):
-        return hash((tuple(self.board), self.nextAgentId, self.winnerId))
 
-
-class TicTac:
+class TicTac(SimulatorInterface):
     BoardSize: int = 3
     EmptyCell: int = -1
 
-    def step(self, state: TicTacState, action: int) -> t.Tuple[TicTacState, t.Dict[int, float], int]:
-        # We have a list in our state.
+    def step(self, state: TicTacState, action: int) -> t.Tuple[TicTacState, int, float, int]:
+        # We have list in our state
         newState = copy.deepcopy(state)
         coord = action
+
+        # --- Handle the 'sense' action.
+        if newState.nextActionType == TicTacActionType.Sense:
+            observation = newState.board[coord]
+            newState.nextActionType = TicTacActionType.Move
+
+            return newState, observation, 0, newState.nextAgentId
+
+        # --- Handle the 'move' action.
 
         # Place a new piece, unless the cell is occupied.
         if state.board[coord] == TicTac.EmptyCell:
             newState.board[coord] = state.nextAgentId
 
-        # Advance the counter.
+        # Report what's in the cell now.
+        observation = newState.board[coord]
+        # Advance the counters.
         newState.nextAgentId = (state.nextAgentId + 1) % 2
+        newState.nextActionType = TicTacActionType.Sense
 
         # Check for the win condition.
         size = TicTac.BoardSize
@@ -62,23 +78,20 @@ class TicTac:
                 break
 
         # Win = 1, Draw = 0, Loss = -1
-        rewards = {}
-        for agent_id in (0, 1):
-            rewards[agent_id] = (1 if state.winnerId == agent_id else -1) if state.winnerId is not None else 0
+        reward = (1 if newState.winnerId == state.nextAgentId else -1) if newState.winnerId is not None else 0
 
-        return newState, rewards, newState.nextAgentId
+        return newState, observation, reward, newState.nextAgentId
 
     def state_is_terminal(self, state: TicTacState) -> bool:
         return state.winnerId is not None or not any(x == TicTac.EmptyCell for x in state.board)
 
     def enumerate_actions(self, state: TicTacState) -> t.Set:
-        # Return only the empty positions
+        # Return all positions except for the ones that player already holds.
         # Avoids pointless moves, makes the game converge.
-        return set(i for i, x in enumerate(state.board) if x == TicTac.EmptyCell)
+        return set(i for i, x in enumerate(state.board) if x != state.nextAgentId)
 
     def get_initial_state(self) -> t.Tuple[TicTacState, int]:
         state = TicTacState()
-
         return state, state.nextAgentId
 
     def get_agent_num(self) -> int:
@@ -88,9 +101,7 @@ class TicTac:
         return state.nextAgentId
 
     def get_terminal_value(self, state: TicTacState) -> t.Dict[t.Hashable, float]:
-        # todo This is duplicated, fix.
-        result = {}
-        for agent_id in (0, 1):
-            result[agent_id] = (1 if state.winnerId == agent_id else -1) if state.winnerId is not None else 0
-
-        return result
+        return {
+            0: int(state.winnerId == 0),
+            1: int(state.winnerId == 1)
+        }
