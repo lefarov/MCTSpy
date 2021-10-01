@@ -376,18 +376,27 @@ def fen_to_npboard(fen, piece_index=PIECE_INDEX):
 
 
 def board_to_npboard(board, piece_index=PIECE_INDEX):
-    board_index_tensor = np.zeros((64, ), dtype=np.int32)
-    board_onehot_tensor = np.zeros((64, len(piece_index)))
+    board_index = np.zeros((64, ), dtype=np.int32)
+    board_onehot = np.zeros((64, len(piece_index)))
 
     for square, piece in board.piece_map().items():
-        board_index_tensor[square] = piece_index[piece.symbol()]
-        board_onehot_tensor[square][piece_index[piece.symbol()]] = 1
+        board_index[square] = piece_index[piece.symbol()]
+        board_onehot[square][piece_index[piece.symbol()]] = 1
 
-    return board_index_tensor.reshape(8, 8), board_onehot_tensor.reshape(8, 8, -1)
+    return board_index.reshape(8, 8), board_onehot.reshape(8, 8, -1)
 
 
 def action_to_npaction(action: chess.Move) -> np.ndarray:
-    action_ohe = np.zeros((64, 64), dtype=np.int32)
-    action_ohe[action.from_square, action.to_square] = 1
+    action_onehot = np.zeros(64 * 64)
+    action_onehot[action.from_square * 64 + action.to_square] = 1
 
-    return action_ohe
+    return action_onehot
+
+
+def onehot_action_to_move(action: int):
+    
+    
+    file_index = action // 8
+    rank_index = action % 8
+
+    return f"{}"

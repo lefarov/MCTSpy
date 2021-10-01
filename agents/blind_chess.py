@@ -5,8 +5,12 @@ import random
 import chess
 import chess.engine
 import typing as t
+import torch
+import numpy as np
 
 from reconchess import Color, Player, Square, GameHistory, WinReason
+
+from simulations.blind_chess import board_to_npboard, action_to_npaction
 
 
 class RandomBot(Player):
@@ -175,3 +179,122 @@ class TroutBot(Player):
             self.engine.quit()
         except chess.engine.EngineTerminatedError:
             pass
+
+
+class QAgent(Player):
+
+    def __init__(self, q_net, policy, narx_memory_length):
+        self.board = None
+        self.color = None
+        self.nanrx_memory = None
+
+        self.q_net = q_net
+        self.policy = policy
+        self.memory_length = narx_memory_length
+
+    def handle_game_start(
+        self, color: Color, board: chess.Board, opponent_name: str
+    ):
+        # Initialize board and color
+        self.board = board
+        self.color = color
+        
+        # Initialize NARX memory with the shape [L, 8, 8, 13],
+        # where L is the memory lenght, 8x8 is the board dimensions
+        # and 13 is the one-hot-encoded piece representation
+        self.nanrx_memory = np.tile(self.board_onehot, (self.memory_length, 1, 1, 1))
+
+    @property
+    def board_onehot(self):
+        _, board_onehot = board_to_npboard(self.board)
+
+        return board_onehot
+
+    def add_to_memeory(self, board_onehot):
+        assert isinstance(board_onehot, np.ndarray)
+        assert board_onehot.shape == (8, 8, 13)
+
+        # TODO: benchamrk and search for faster implementations if needed
+        # Shift memory by 1 postition to the right
+        self.nanrx_memory = np.roll(self.nanrx_memory, 1, axis=0)
+        # Overwrite the first observation
+        self.nanrx_memory[0, :] = board_onehot
+        
+
+    def handle_opponent_move_result(
+        self, captured_my_piece: bool, capture_square: t.Optional[Square]
+    ):
+        if captured_my_piece:
+            self.board.remove_piece_at(capture_square)
+
+    def choose_sense(
+        self, 
+        sense_actions: t.List[Square], 
+        move_actions: t.List[chess.Move], 
+        seconds_left: float
+    ) -> t.Optional[Square]:
+        # Add latest state of observation to the NARX memory
+        self.add_to_memeory(self.board_onehot)
+
+        with torch.no_grad():
+            # Compute state Value and Advantages for every sense action 
+            state_v, sense_adv, *_ = self.q_net(torch.as_tensor(self.nanrx_memory))
+            # Compute Q value
+            sense_q = state_v + sense_adv
+            sense_opt = torch.argmax(sense_q, dim=-1).item()
+
+
+        return sense_actions[sense_opt]
+
+    def handle_sense_result(
+        self, sense_result: t.List[t.Tuple[Square, t.Optional[chess.Piece]]]
+    ):
+        # Add the pieces in the sense result to our board
+        for square, piece in sense_result:
+            self.board.set_piece_at(square, piece)
+
+    def choose_move(
+        self, move_actions: t.List[chess.Move], seconds_left: float
+    ) -> t.Optional[chess.Move]:
+        # Add latest state of observation to the NARX memory
+        self.add_to_memeory(self.board_onehot)
+
+        # Transform chess Moves into their indices in action Space
+        moves_onehot = np.stack(map(action_to_npaction, move_actions))
+        moves_indices = np.argmax(moves_onehot, axis=-1)
+
+        with torch.no_grad():
+            # Compute state Value and Advantages for every move action 
+            state_v, _, move_adv, *_ = self.q_net(torch.as_tensor(self.nanrx_memory))
+            # Compute Q value
+            move_q = state_v + move_adv
+            # Mask unavailable actions
+            move_q[moves_indices] = torch.finfo(move_adv.dtype).min 
+            # TODO: replace it by policy funciton (should available indices be passed to policy?)
+            # TODO: make sure that you accedently don't select invalid action during exploration
+            move_opt = torch.argmax(move_q, dim=-1).item()
+
+        # Conver index of an action to chess Move
+        return
+
+    def handle_move_result(
+        self, 
+        requested_move: t.Optional[chess.Move], 
+        taken_move: t.Optional[chess.Move],
+        captured_opponent_piece: bool, 
+        capture_square: t.Optional[Square]
+    ):
+        if taken_move is not None:
+            self.board.push(taken_move)
+            self.board.turn = self.color
+
+        if captured_opponent_piece:
+            self.board.remove_piece_at(capture_square)
+
+    def handle_game_end(
+        self, 
+        winner_color: t.Optional[Color], 
+        win_reason: t.Optional[WinReason],
+        game_history: GameHistory
+    ):
+        pass
