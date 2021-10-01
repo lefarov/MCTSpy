@@ -60,36 +60,42 @@ def evaluate_vs_random_agent(q_func, game, eval_round_number):
         wins += int(terminal_values[agent_to_player[1]] == 1)
         draws += int(terminal_values[agent_to_player[1]] == 0)
 
-    return draws, wins
+    return wins, draws
 
 
 def main():
-    episode_number = 100000
+    episode_number = 200000
     eval_round_number = 1000
 
-    lr = 0.25
+    lr = 0.2
     discount_rate = 0.9
-    eps = 0.02
+    eps = 0.05
 
     out_path = Path(os.environ['DEV_OUT_PATH']) / 'scripts' / 'tic_tac_dqn'
 
     game = TicTac()
     min_reward, max_reward = -1, 1
 
-    # Define the state that will be visualized.
+    # Define the states that will be visualized.
     init_state, _ = game.get_initial_state()
-    vis_state = game.step(game.step(game.step(init_state, 0)[0], 4)[0], 1)[0]  # Moves: 0, 4, 1. Next must be 2.
+    vis_states = [
+        game.step(game.step(game.step(init_state, 0)[0], 4)[0], 1)[0],  # Moves: 0, 4, 1. Next must be 2.
+        game.step(game.step(game.step(game.step(init_state, 0)[0], 4)[0], 1)[0], 3)[0]  # Same, but P2 made a mistake.
+    ]
 
     # todo How are tabulated Q-funcs initialized?
     q_init_func = lambda: random.random() * (max_reward - min_reward) + min_reward
     q_func = defaultdict(q_init_func)  # type: TQFunc
 
-    # Build the policies. We will play against a random agent.
+    # Build the policies for both players.
     policy_eps_trained = functools.partial(eps_policy, q_func, eps=eps)
-    policy_random = lambda s, actions: [1.0 for _ in actions]
+    policy_random = lambda s, actions: {a: 1.0 for a in actions}
     # policy_greedy = functools.partial(eps_policy, q_func, eps=0)
-    policies = [policy_random, policy_eps_trained]
+    # policies = [policy_random, policy_eps_trained]
+    policies = [policy_eps_trained, policy_eps_trained]
     trained_agent_id = 1
+
+    training_history = defaultdict(list)
 
     for i_episode in range(episode_number):
         # Decide who goes first this match/episode.
@@ -101,7 +107,8 @@ def main():
         state, player_id = game.get_initial_state()
         available_actions = list(game.enumerate_actions(state))
         policy = policies[player_to_agent[player_id]]
-        action = random.choices(available_actions, k=1, weights=policy(state, available_actions))[0]
+        action_probs = list(map(policy(state, available_actions).get, available_actions))
+        action = random.choices(available_actions, k=1, weights=action_probs)[0]
 
         # Play a game and collect all states, actions and rewards along the way.
         sar_buffer = []
@@ -111,15 +118,12 @@ def main():
             next_state, rewards, next_player_id = game.step(state, action)
             sar_buffer.append((state, action, rewards, player_id))
 
-            if i_episode % int(episode_number / 10) == 0:
-                print(state)
-                print(f"Action: {action} Rewards: {rewards}")
-
             reached_terminal = game.state_is_terminal(next_state)
             if not reached_terminal:
                 available_actions = list(game.enumerate_actions(next_state))
                 policy = policies[player_to_agent[next_player_id]]
-                next_action = random.choices(available_actions, k=1, weights=policy(next_state, available_actions))[0]
+                action_probs = list(map(policy(next_state, available_actions).get, available_actions))
+                next_action = random.choices(available_actions, k=1, weights=action_probs)[0]
             else:
                 next_action = None  # Just a dummy action out of the terminal state
                 # Insert a state for the other player using the same rewards,
@@ -150,46 +154,34 @@ def main():
             reward = rewards[agent_to_player[trained_agent_id]]
             q_func[(state, action)] += lr * (reward + discount_rate * q_next - q_current)
             # print(f" Update by {lr * (reward + discount_rate * q_next - q_current)} Reward {reward}")
-            # print("Update {lr * (reward + discount_rate * q_next - q_current)}")
 
         if i_episode % int(episode_number / 10) == 0:
-            print(f"Plot {i_episode}")
-            fig, ax = plt.subplots()
-            q_values = np.zeros((TicTac.BoardSize * TicTac.BoardSize))
-            for a in game.enumerate_actions(vis_state):
-                q_values[a] = q_func[(vis_state, a)]
-            ax.matshow(q_values.reshape((TicTac.BoardSize, TicTac.BoardSize)), vmin=-1, vmax=1)
+            print(f"Plotting after episode {i_episode}")
+            fig, axes = plt.subplots(ncols=len(vis_states))
+            # Plot the Q function for each of the predefined states.
+            for i, vis_state in enumerate(vis_states):
+                q_values = np.zeros((TicTac.BoardSize * TicTac.BoardSize))
+                for a in game.enumerate_actions(vis_state):
+                    q_values[a] = q_func[(vis_state, a)]
+                axes[i].matshow(q_values.reshape((TicTac.BoardSize, TicTac.BoardSize)), vmin=-1, vmax=1)
 
-        # === This code accidentally assumed a one-player game, lol.
-        # reached_terminal = False
-        # while reached_terminal:
-        #
-        #     next_state, rewards, next_player_id = game.step(state, action)
-        #     available_actions = list(game.enumerate_actions(next_state))
-        #
-        #     reached_terminal = game.state_is_terminal(next_state)
-        #
-        #     if not reached_terminal:
-        #         next_action = random.choices(available_actions, k=1, weights=policy_eps_trained(next_state, available_actions))[0]
-        #     else:
-        #         next_action = None  # Just a dummy action out of the terminal state.
-        #
-        #     q_current = q_func[(state, action)]
-        #     q_next = q_func[(next_state, next_action)]
-        #
-        #     q_func[(state, action)] += lr * (rewards[___] + discount_rate * q_next - q_current)
-        #
-        #     state = next_state
-        #     action = next_action
-        #     player_id = next_player_id
+            wins, draws = evaluate_vs_random_agent(q_func, game, eval_round_number)
+            training_history['episodes'].append(i_episode)
+            training_history['wins'].append(wins / eval_round_number * 100)
+            training_history['draws'].append(draws / eval_round_number * 100)
 
-    print(f"Q-values: {len(q_func)}")
+    print(f"Q-values total: {len(q_func)}")
+
+    fig, axes = plt.subplots()
+    axes.plot(training_history['episodes'], training_history['wins'], label='wins')
+    axes.plot(training_history['episodes'], training_history['draws'], label='draws')
+    axes.legend()
 
     out_path.mkdir(exist_ok=True, parents=True)
     with open(out_path / 'q_table.pcl', 'wb') as file:
         pickle.dump(dict(q_func), file)
 
-    draws, wins = evaluate_vs_random_agent(q_func, game, eval_round_number)
+    wins, draws = evaluate_vs_random_agent(q_func, game, eval_round_number)
 
     print(f"Wins: {wins / eval_round_number * 100:.1f}% Draws: {draws / eval_round_number * 100:.1f}%")
 
