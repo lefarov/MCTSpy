@@ -400,5 +400,9 @@ def move_to_onehot(move: chess.Move) -> np.ndarray:
     return move_onehot
 
 
+def move_to_index(move: chess.Move) -> int:
+    return move.from_square * 64 + move.to_square
+
+
 def index_to_move(action: int):
     return chess.Move(from_square=action // 64, to_square=action % 64)
