@@ -365,38 +365,40 @@ def board_state_to_npboard(board_state: chess._BoardState, piece_index: typing.D
     board = chess.Board.empty()
     board_state.restore(board)
 
-    return board_to_npboard(board, piece_index)
+    return board_to_index_encoding(board, piece_index)
 
 
 def fen_to_npboard(fen, piece_index=PIECE_INDEX):
     board = chess.Board.empty()
     board.set_fen(fen)
 
-    return board_to_npboard(board, piece_index)
+    return board_to_index_encoding(board, piece_index)
 
 
-def board_to_npboard(board, piece_index=PIECE_INDEX):
+def board_to_index_encoding(board: chess.Board, piece_index=PIECE_INDEX):
     board_index = np.zeros((64, ), dtype=np.int32)
-    board_onehot = np.zeros((64, len(piece_index)))
 
     for square, piece in board.piece_map().items():
         board_index[square] = piece_index[piece.symbol()]
+
+    return board_index.reshape(8, 8)
+
+
+def board_to_onehot(board: chess.Board, piece_index=PIECE_INDEX):
+    board_onehot = np.zeros((64, len(piece_index)))
+
+    for square, piece in board.piece_map().items():
         board_onehot[square][piece_index[piece.symbol()]] = 1
 
-    return board_index.reshape(8, 8), board_onehot.reshape(8, 8, -1)
+    return board_onehot.reshape(8, 8, -1)
 
 
-def action_to_npaction(action: chess.Move) -> np.ndarray:
-    action_onehot = np.zeros(64 * 64)
-    action_onehot[action.from_square * 64 + action.to_square] = 1
+def move_to_onehot(move: chess.Move) -> np.ndarray:
+    move_onehot = np.zeros(64 * 64)
+    move_onehot[move.from_square * 64 + move.to_square] = 1
 
-    return action_onehot
+    return move_onehot
 
 
-def onehot_action_to_move(action: int):
-    
-    
-    file_index = action // 8
-    rank_index = action % 8
-
-    return f"{}"
+def index_to_move(action: int):
+    return chess.Move(from_square=action // 64, to_square=action % 64)

@@ -1,5 +1,3 @@
-"""Bots are Copied from [https://reconchess.readthedocs.io/en/latest/bot_create.html]."""
-
 import os
 import random
 import chess
@@ -10,11 +8,21 @@ import numpy as np
 
 from reconchess import Color, Player, Square, GameHistory, WinReason
 
-from simulations.blind_chess import board_to_npboard, action_to_npaction
+from simulations.blind_chess import (
+    board_to_index_encoding,
+    board_to_onehot,
+    move_to_onehot,
+    index_to_move,
+    PIECE_INDEX,
+)
 
 
 class RandomBot(Player):
-    """Bot that selects randomly from the set of available actions."""
+    """
+    Bot that selects randomly from the set of available actions.
+    
+    Copied from https://reconchess.readthedocs.io/en/latest/bot_create.html.
+    """
     def handle_game_start(
         self, color: Color, board: chess.Board, opponent_name: str
     ):
@@ -67,6 +75,8 @@ class TroutBot(Player):
     TroutBot uses the Stockfish chess engine to choose moves. In order to run TroutBot you'll need to download
     Stockfish from https://stockfishchess.org/download/ and create an environment variable called STOCKFISH_EXECUTABLE
     that is the path to the downloaded Stockfish executable.
+
+    Copied from https://reconchess.readthedocs.io/en/latest/bot_create.html.
     """
 
     def __init__(self):
@@ -169,8 +179,7 @@ class TroutBot(Player):
 
     def handle_game_end(
         self, 
-        winner_color: 
-        t.Optional[Color], 
+        winner_color: t.Optional[Color], 
         win_reason: t.Optional[WinReason],
         game_history: GameHistory
     ):
@@ -206,7 +215,7 @@ class QAgent(Player):
 
     @property
     def board_onehot(self):
-        _, board_onehot = board_to_npboard(self.board)
+        board_onehot = board_to_onehot(self.board)
 
         return board_onehot
 
@@ -260,7 +269,7 @@ class QAgent(Player):
         self.add_to_memeory(self.board_onehot)
 
         # Transform chess Moves into their indices in action Space
-        moves_onehot = np.stack(map(action_to_npaction, move_actions))
+        moves_onehot = np.stack(map(move_to_onehot, move_actions))
         moves_indices = np.argmax(moves_onehot, axis=-1)
 
         with torch.no_grad():
@@ -270,12 +279,15 @@ class QAgent(Player):
             move_q = state_v + move_adv
             # Mask unavailable actions
             move_q[moves_indices] = torch.finfo(move_adv.dtype).min 
-            # TODO: replace it by policy funciton (should available indices be passed to policy?)
+            # TODO: replace it by policy funciton (should- available indices be passed to policy?)
             # TODO: make sure that you accedently don't select invalid action during exploration
             move_opt = torch.argmax(move_q, dim=-1).item()
 
         # Conver index of an action to chess Move
-        return
+        move = index_to_move(move_opt)
+        assert move in set(move_actions)
+
+        return move
 
     def handle_move_result(
         self, 
@@ -298,3 +310,76 @@ class QAgent(Player):
         game_history: GameHistory
     ):
         pass
+
+
+class TestQNet(torch.nn.Module):
+
+    def __init__(self, narx_memory_length, n_hidden):
+        super().__init__()
+
+        self.narx_memory_length = narx_memory_length
+        self.n_hidden = self.n_hidden
+
+        # Board convolution backbone:
+        # 3D convolution layer is applied to a thensor with shape (N,C​,D​,H​,W​)
+        # where N - batch size, C (channels) - one-hot-encoding of a piece,
+        # D (depth) - history length, H and W are board dimentions (i.e. 8x8).
+
+        # Start by convolving the entire board and entire history
+        self.conv_full = torch.nn.Conv3d(
+            in_channels=len(PIECE_INDEX),
+            out_channels=self.n_hidden,
+            kernel_size=(2 * self.narx_memory_length - 1, 15, 15),
+            padding=(self.narx_memory_length - 1, 7, 7)
+        )
+        
+        # Half board and half history convolution
+        self.conv_half = torch.nn.Conv3d(
+            in_channels=self.n_hidden,
+            out_channels=self.n_hidden,
+            kernel_size=(self.narx_memory_length - 1, 9, 9),
+            padding=(self.narx_memory_length / 2 - 1, 4, 4),
+            stride=(2, 2, 2)
+        )
+
+        # Small convolution used to reduce board and history dimensions
+        self.conv_reduce = torch.nn.Conv3d(
+            in_channels=self.n_hidden,
+            out_channels=self.n_hidden,
+            kernel_size=(2, 2, 2),
+            stride=(2, 2, 2)
+        )
+
+        # Player heads
+        self.fc_state_val = torch.nn.Linear(self.n_hidden, 1)
+        self.fc_sense_adv = torch.nn.Linear(self.n_hidden, 64)
+        self.fc_move_adv = torch.nn.linear(self.n_hidden, 64 * 64)
+        # Opponent heads
+        self.fc_opponent_sense = torch.nn.Linear(self.n_hidden, 64)
+        self.fc_opponent_move = torch.nn.Linear(self.n_hidden, 64 * 64)
+
+
+    def forward(self, board_memory: torch.Tensor):
+        # Re-align board memory to fit the shape described in init
+        x = board_memory.permute(3, 0, 1, 2)
+
+        x = self.conv_full(x)
+        x = torch.nn.functional.relu(x)
+
+        x = self.conv_half(x)
+        x = torch.nn.functional.relu(x)
+
+        # Reduce history and board to single dimensions
+        while x.size()[-3:] != (1, 1, 1):
+            x = self.conv_reduce(x)
+            x = torch.nn.functional.relu(x)
+
+        # Compute heads
+        state_val = torch.nn.functional.relu(self.fc_state_val(x))
+        sense_adv = torch.nn.functional.relu(self.fc_sense_adv(x))
+        move_adv = torch.nn.functional.relu(self.fc_move_adv(x))
+
+        opponent_sense = torch.nn.functional.relu(self.fc_opponent_sense(x))
+        opponent_move = torch.nn.functional.relu(self.fc_opponent_move(x))
+
+        return state_val, sense_adv, move_adv, opponent_sense, opponent_move

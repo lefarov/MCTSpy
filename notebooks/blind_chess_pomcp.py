@@ -29,7 +29,7 @@ from simulations.blind_chess import (
     MPGameAction,
     fen_to_npboard,
     board_state_to_npboard,
-    board_to_npboard,
+    board_to_index_encoding,
     PIECE_INDEX
 )
 
