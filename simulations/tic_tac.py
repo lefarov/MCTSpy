@@ -63,8 +63,8 @@ class TicTac:
 
         # Win = 1, Draw = 0, Loss = -1
         rewards = {}
-        for agent_id in (0, 1):
-            rewards[agent_id] = (1 if state.winnerId == agent_id else -1) if state.winnerId is not None else 0
+        for player_id in (0, 1):
+            rewards[player_id] = (1 if newState.winnerId == player_id else -1) if newState.winnerId is not None else 0
 
         return newState, rewards, newState.nextAgentId
 
@@ -90,7 +90,7 @@ class TicTac:
     def get_terminal_value(self, state: TicTacState) -> t.Dict[t.Hashable, float]:
         # todo This is duplicated, fix.
         result = {}
-        for agent_id in (0, 1):
-            result[agent_id] = (1 if state.winnerId == agent_id else -1) if state.winnerId is not None else 0
+        for player_id in (0, 1):
+            result[player_id] = (1 if state.winnerId == player_id else -1) if state.winnerId is not None else 0
 
         return result
