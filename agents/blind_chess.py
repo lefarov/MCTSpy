@@ -2,6 +2,8 @@ import functools
 import operator
 import os
 import random
+from typing import NamedTuple
+
 import chess
 import chess.engine
 import typing as t
@@ -17,6 +19,12 @@ from simulations.blind_chess import (
     index_to_move,
     PIECE_INDEX, move_to_index,
 )
+
+
+class Transition(NamedTuple):
+    observation: np.ndarray
+    action: int
+    reward: float
 
 
 class RandomBot(Player):
@@ -194,14 +202,16 @@ class TroutBot(Player):
 
 class QAgent(Player):
 
-    def __init__(self, q_net, policy, narx_memory_length):
+    def __init__(self, q_net, policy_sampler, narx_memory_length):
         self.board = None
         self.color = None
         self.nanrx_memory = None
 
         self.q_net = q_net
-        self.policy = policy
+        self.policy_sampler = policy_sampler
         self.memory_length = narx_memory_length
+
+        self.history = []
 
     def handle_game_start(
         self, color: Color, board: chess.Board, opponent_name: str
@@ -213,13 +223,9 @@ class QAgent(Player):
         # Initialize NARX memory with the shape [L, 8, 8, 13],
         # where L is the memory lenght, 8x8 is the board dimensions
         # and 13 is the one-hot-encoded piece representation
-        self.nanrx_memory = np.tile(self.board_onehot, (self.memory_length, 1, 1, 1))
+        self.nanrx_memory = np.tile(board_to_onehot(self.board), (self.memory_length, 1, 1, 1))
 
-    @property
-    def board_onehot(self):
-        board_onehot = board_to_onehot(self.board)
-
-        return board_onehot
+        self.history = []
 
     def add_to_memory(self, board_onehot):
         assert isinstance(board_onehot, np.ndarray)
@@ -231,7 +237,6 @@ class QAgent(Player):
         # Overwrite the first observation
         self.nanrx_memory[0, :] = board_onehot
         
-
     def handle_opponent_move_result(
         self, captured_my_piece: bool, capture_square: t.Optional[Square]
     ):
@@ -245,17 +250,19 @@ class QAgent(Player):
         seconds_left: float
     ) -> t.Optional[Square]:
         # Add latest state of observation to the NARX memory
-        self.add_to_memory(self.board_onehot)
+        self.add_to_memory(board_to_onehot(self.board))
 
         with torch.no_grad():
             # Compute state Value and Advantages for every sense action 
             q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32).unsqueeze(0)  # Add the batch dim.
             state_v, sense_adv, *_ = self.q_net(q_net_input)
             # Compute Q value
-            sense_q = state_v + sense_adv
-            sense_opt = torch.argmax(sense_q, dim=-1).item()
+            sense_q = state_v.squeeze(0) + sense_adv.squeeze(0)
+            sense_index = self.policy_sampler(sense_q, list(range(64)))
 
-        return sense_actions[sense_opt]
+        self.history.append(Transition(board_to_onehot(self.board), sense_index, reward=0))
+
+        return sense_actions[sense_index]
 
     def handle_sense_result(
         self, sense_result: t.List[t.Tuple[Square, t.Optional[chess.Piece]]]
@@ -269,7 +276,7 @@ class QAgent(Player):
         self, move_actions: t.List[chess.Move], seconds_left: float
     ) -> t.Optional[chess.Move]:
         # Add latest state of observation to the NARX memory
-        self.add_to_memory(self.board_onehot)
+        self.add_to_memory(board_to_onehot(self.board))
 
         # Transform chess Moves into their indices in action Space
         moves_indices = list(map(move_to_index, move_actions))
@@ -279,19 +286,17 @@ class QAgent(Player):
             q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32).unsqueeze(0)  # Add the batch dim.
             state_v, _, move_adv, *_ = self.q_net(q_net_input)
             # Compute the Q value.
-            move_q = state_v.squeeze() + move_adv.squeeze()  # Squeeze out the batch dim.
-            # Mask unavailable actions.
-            move_q_masked = torch.full_like(move_q, fill_value=torch.finfo(move_adv.dtype).min)
-            move_q_masked[moves_indices] = move_q[moves_indices]
-            # TODO: replace it by policy function (should- available indices be passed to policy?)
-            # TODO: make sure that you accidentally don't select invalid action during exploration
-            move_opt = torch.argmax(move_q_masked).item()
+            move_q = state_v.squeeze(0) + move_adv.squeeze(0)  # Squeeze out the batch dim.
+            move_index = self.policy_sampler(move_q, moves_indices)
 
         # Convert index of an action to chess Move
-        move = index_to_move(move_opt)
+        move = index_to_move(move_index)
+        if move not in move_actions:
+            move.promotion = chess.QUEEN
+
         assert move in set(move_actions)
 
-        print(f"Playing move {move}")
+        self.history.append(Transition(board_to_onehot(self.board), move_index, reward=0))
 
         return move
 
@@ -306,8 +311,8 @@ class QAgent(Player):
             self.board.push(taken_move)
             self.board.turn = self.color
 
-        if captured_opponent_piece:
-            self.board.remove_piece_at(capture_square)
+        # if captured_opponent_piece:
+        #     self.board.remove_piece_at(capture_square)
 
     def handle_game_end(
         self, 
@@ -315,7 +320,8 @@ class QAgent(Player):
         win_reason: t.Optional[WinReason],
         game_history: GameHistory
     ):
-        pass
+        reward = 1 if winner_color == self.color else -1
+        self.history.append(Transition(board_to_onehot(self.board), None, reward=reward))
 
 
 class TestQNet(torch.nn.Module):
