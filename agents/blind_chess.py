@@ -1,5 +1,9 @@
+import functools
+import operator
 import os
 import random
+from typing import NamedTuple
+
 import chess
 import chess.engine
 import typing as t
@@ -13,8 +17,14 @@ from simulations.blind_chess import (
     board_to_onehot,
     move_to_onehot,
     index_to_move,
-    PIECE_INDEX,
+    PIECE_INDEX, move_to_index,
 )
+
+
+class Transition(NamedTuple):
+    observation: np.ndarray
+    action: int
+    reward: float
 
 
 class RandomBot(Player):
@@ -192,14 +202,16 @@ class TroutBot(Player):
 
 class QAgent(Player):
 
-    def __init__(self, q_net, policy, narx_memory_length):
+    def __init__(self, q_net, policy_sampler, narx_memory_length):
         self.board = None
         self.color = None
         self.nanrx_memory = None
 
         self.q_net = q_net
-        self.policy = policy
+        self.policy_sampler = policy_sampler
         self.memory_length = narx_memory_length
+
+        self.history = []
 
     def handle_game_start(
         self, color: Color, board: chess.Board, opponent_name: str
@@ -211,25 +223,20 @@ class QAgent(Player):
         # Initialize NARX memory with the shape [L, 8, 8, 13],
         # where L is the memory lenght, 8x8 is the board dimensions
         # and 13 is the one-hot-encoded piece representation
-        self.nanrx_memory = np.tile(self.board_onehot, (self.memory_length, 1, 1, 1))
+        self.nanrx_memory = np.tile(board_to_onehot(self.board), (self.memory_length, 1, 1, 1))
 
-    @property
-    def board_onehot(self):
-        board_onehot = board_to_onehot(self.board)
+        self.history = []
 
-        return board_onehot
-
-    def add_to_memeory(self, board_onehot):
+    def add_to_memory(self, board_onehot):
         assert isinstance(board_onehot, np.ndarray)
         assert board_onehot.shape == (8, 8, 13)
 
-        # TODO: benchamrk and search for faster implementations if needed
+        # TODO: benchmark and search for faster implementations if needed
         # Shift memory by 1 postition to the right
         self.nanrx_memory = np.roll(self.nanrx_memory, 1, axis=0)
         # Overwrite the first observation
         self.nanrx_memory[0, :] = board_onehot
         
-
     def handle_opponent_move_result(
         self, captured_my_piece: bool, capture_square: t.Optional[Square]
     ):
@@ -243,22 +250,25 @@ class QAgent(Player):
         seconds_left: float
     ) -> t.Optional[Square]:
         # Add latest state of observation to the NARX memory
-        self.add_to_memeory(self.board_onehot)
+        self.add_to_memory(board_to_onehot(self.board))
 
         with torch.no_grad():
             # Compute state Value and Advantages for every sense action 
-            state_v, sense_adv, *_ = self.q_net(torch.as_tensor(self.nanrx_memory))
+            q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32).unsqueeze(0)  # Add the batch dim.
+            state_v, sense_adv, *_ = self.q_net(q_net_input)
             # Compute Q value
-            sense_q = state_v + sense_adv
-            sense_opt = torch.argmax(sense_q, dim=-1).item()
+            sense_q = state_v.squeeze(0) + sense_adv.squeeze(0)
+            sense_index = self.policy_sampler(sense_q, list(range(64)))
 
+        self.history.append(Transition(board_to_onehot(self.board), sense_index, reward=0))
 
-        return sense_actions[sense_opt]
+        return sense_actions[sense_index]
 
     def handle_sense_result(
         self, sense_result: t.List[t.Tuple[Square, t.Optional[chess.Piece]]]
     ):
         # Add the pieces in the sense result to our board
+        # TODO: Remove the pieces from their old locations (if known).
         for square, piece in sense_result:
             self.board.set_piece_at(square, piece)
 
@@ -266,26 +276,27 @@ class QAgent(Player):
         self, move_actions: t.List[chess.Move], seconds_left: float
     ) -> t.Optional[chess.Move]:
         # Add latest state of observation to the NARX memory
-        self.add_to_memeory(self.board_onehot)
+        self.add_to_memory(board_to_onehot(self.board))
 
         # Transform chess Moves into their indices in action Space
-        moves_onehot = np.stack(map(move_to_onehot, move_actions))
-        moves_indices = np.argmax(moves_onehot, axis=-1)
+        moves_indices = list(map(move_to_index, move_actions))
 
         with torch.no_grad():
-            # Compute state Value and Advantages for every move action 
-            state_v, _, move_adv, *_ = self.q_net(torch.as_tensor(self.nanrx_memory))
-            # Compute Q value
-            move_q = state_v + move_adv
-            # Mask unavailable actions
-            move_q[moves_indices] = torch.finfo(move_adv.dtype).min 
-            # TODO: replace it by policy funciton (should- available indices be passed to policy?)
-            # TODO: make sure that you accedently don't select invalid action during exploration
-            move_opt = torch.argmax(move_q, dim=-1).item()
+            # Compute state Value and Advantages for every move action
+            q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32).unsqueeze(0)  # Add the batch dim.
+            state_v, _, move_adv, *_ = self.q_net(q_net_input)
+            # Compute the Q value.
+            move_q = state_v.squeeze(0) + move_adv.squeeze(0)  # Squeeze out the batch dim.
+            move_index = self.policy_sampler(move_q, moves_indices)
 
-        # Conver index of an action to chess Move
-        move = index_to_move(move_opt)
+        # Convert index of an action to chess Move
+        move = index_to_move(move_index)
+        if move not in move_actions:
+            move.promotion = chess.QUEEN
+
         assert move in set(move_actions)
+
+        self.history.append(Transition(board_to_onehot(self.board), move_index, reward=0))
 
         return move
 
@@ -300,8 +311,8 @@ class QAgent(Player):
             self.board.push(taken_move)
             self.board.turn = self.color
 
-        if captured_opponent_piece:
-            self.board.remove_piece_at(capture_square)
+        # if captured_opponent_piece:
+        #     self.board.remove_piece_at(capture_square)
 
     def handle_game_end(
         self, 
@@ -309,70 +320,76 @@ class QAgent(Player):
         win_reason: t.Optional[WinReason],
         game_history: GameHistory
     ):
-        pass
+        reward = 1 if winner_color == self.color else -1
+        self.history.append(Transition(board_to_onehot(self.board), None, reward=reward))
 
 
 class TestQNet(torch.nn.Module):
 
-    def __init__(self, narx_memory_length, n_hidden):
+    def __init__(self, narx_memory_length, n_hidden, channels_per_layer: t.Optional[t.List[int]] = None):
         super().__init__()
 
         self.narx_memory_length = narx_memory_length
-        self.n_hidden = self.n_hidden
+        self.n_hidden = n_hidden
+        self.channels_per_layer = channels_per_layer or [64, 128, 256]
 
         # Board convolution backbone:
         # 3D convolution layer is applied to a thensor with shape (N,C​,D​,H​,W​)
         # where N - batch size, C (channels) - one-hot-encoding of a piece,
         # D (depth) - history length, H and W are board dimentions (i.e. 8x8).
 
-        # Start by convolving the entire board and entire history
-        self.conv_full = torch.nn.Conv3d(
-            in_channels=len(PIECE_INDEX),
-            out_channels=self.n_hidden,
-            kernel_size=(2 * self.narx_memory_length - 1, 15, 15),
-            padding=(self.narx_memory_length - 1, 7, 7)
-        )
-        
-        # Half board and half history convolution
-        self.conv_half = torch.nn.Conv3d(
-            in_channels=self.n_hidden,
-            out_channels=self.n_hidden,
-            kernel_size=(self.narx_memory_length - 1, 9, 9),
-            padding=(self.narx_memory_length / 2 - 1, 4, 4),
-            stride=(2, 2, 2)
+        self.conv_stack = torch.nn.Sequential(
+            torch.nn.Conv3d(
+                in_channels=len(PIECE_INDEX),
+                out_channels=self.channels_per_layer[0],
+                kernel_size=(3, 3, 3),
+                # stride=(2, 2, 2)
+            ),
+            torch.nn.ReLU(),
+            torch.nn.Conv3d(
+                in_channels=self.channels_per_layer[0],
+                out_channels=self.channels_per_layer[1],
+                kernel_size=(3, 3, 3),
+                # stride=(2, 2, 2)
+            ),
+            torch.nn.ReLU(),
+            torch.nn.Conv3d(
+                in_channels=self.channels_per_layer[1],
+                out_channels=self.channels_per_layer[2],
+                kernel_size=(3, 3, 3),
+                # stride=(2, 2, 2)
+            ),
+            torch.nn.ReLU()
         )
 
-        # Small convolution used to reduce board and history dimensions
-        self.conv_reduce = torch.nn.Conv3d(
-            in_channels=self.n_hidden,
-            out_channels=self.n_hidden,
-            kernel_size=(2, 2, 2),
-            stride=(2, 2, 2)
+        dummy_input = torch.zeros((1, len(PIECE_INDEX), self.narx_memory_length, 8, 8))
+        fc_input_size = functools.reduce(operator.mul, self.conv_stack(dummy_input).shape)
+
+        self.fc_stack = torch.nn.Sequential(
+            torch.nn.Linear(fc_input_size, n_hidden),
+            torch.nn.ReLU(),
+            torch.nn.Linear(n_hidden, n_hidden),
+            torch.nn.ReLU(),
         )
 
         # Player heads
         self.fc_state_val = torch.nn.Linear(self.n_hidden, 1)
         self.fc_sense_adv = torch.nn.Linear(self.n_hidden, 64)
-        self.fc_move_adv = torch.nn.linear(self.n_hidden, 64 * 64)
+        self.fc_move_adv = torch.nn.Linear(self.n_hidden, 64 * 64)
         # Opponent heads
         self.fc_opponent_sense = torch.nn.Linear(self.n_hidden, 64)
         self.fc_opponent_move = torch.nn.Linear(self.n_hidden, 64 * 64)
 
-
     def forward(self, board_memory: torch.Tensor):
         # Re-align board memory to fit the shape described in init
-        x = board_memory.permute(3, 0, 1, 2)
+        # (B, T, H, W, C) -> (B, C, T, H, W)
+        x = board_memory.permute(0, 4, 1, 2, 3)
 
-        x = self.conv_full(x)
-        x = torch.nn.functional.relu(x)
+        x = self.conv_stack(x)
 
-        x = self.conv_half(x)
-        x = torch.nn.functional.relu(x)
+        x = torch.flatten(x, start_dim=1)
 
-        # Reduce history and board to single dimensions
-        while x.size()[-3:] != (1, 1, 1):
-            x = self.conv_reduce(x)
-            x = torch.nn.functional.relu(x)
+        x = self.fc_stack(x)
 
         # Compute heads
         state_val = torch.nn.functional.relu(self.fc_state_val(x))
