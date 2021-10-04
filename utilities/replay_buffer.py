@@ -1,4 +1,6 @@
 import typing as t
+import numpy as np
+
 from collections import deque
 
 # import numpy as np
@@ -28,6 +30,7 @@ class ReplayBufferList:
             self.write_data_at_loc(data_to_insert, 0)
             return
 
+        #TODO: not gonna work (it doesn't select the latest added element)
         tail = self.indices[-1][1]
         head = self.indices[0][0]
 

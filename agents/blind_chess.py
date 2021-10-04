@@ -2,7 +2,6 @@ import functools
 import operator
 import os
 import random
-from typing import NamedTuple
 
 import chess
 import chess.engine
@@ -21,10 +20,20 @@ from simulations.blind_chess import (
 )
 
 
-class Transition(NamedTuple):
+class Transition(t.NamedTuple):
     observation: np.ndarray
     action: int
     reward: float
+
+    @classmethod
+    def stack(cls, transitions: t.Sequence):
+        """Convert a sequence of nameduples into a namedpule of sequences."""
+
+        def stacking_map(transitions):
+            for items in zip(*transitions):
+                yield np.stack(items)
+            
+        return cls(*stacking_map(transitions))
 
 
 class RandomBot(Player):
