@@ -92,15 +92,20 @@ class HistoryRaplayBuffer:
 
         # Pop history records from the buffer until we can fit current history
         # between the end of the last entry and the beginning of the next one.
-        while next_entry - last_entry < length:
+        while self.history_indices and next_entry - last_entry < length:
             start, _ = self.history_indices.popleft()
-            next_entry = self.history_indices[0][0] or self.size
             
             # If we pop history record that starts at 0, it means that we don't have
             # enough free space till the end of the buffer. Thus we need to write
             # current history from the beginning of the buffer till the next record.
             if start == 0:
                 last_entry = 0
+
+            # If indices deque is not empty, set the next entry pointer to the start
+            # of the next histroy record. If next history record starts at zero, it
+            # means that there're no more records till the end of the buffer.
+            if self.history_indices:
+                next_entry = self.history_indices[0][0] or self.size
         
         # Write history after the last entry in the buffer and rottate the indices deque.
         self.write_history_at_location(history, last_entry)
