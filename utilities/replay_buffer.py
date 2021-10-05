@@ -2,9 +2,9 @@ import typing as t
 import numpy as np
 
 from collections import deque
-
-# import numpy as np
 from heapq import heappush, heappop
+
+from agents.blind_chess import Transition
 
 
 class ReplayBufferList:
@@ -57,6 +57,68 @@ class ReplayBufferList:
             index += 1
 
         heappush(self.indices, (index_start, index))
+
+
+class HistoryRaplayBuffer:
+
+    def __init__(
+        self,
+        size: int,
+        obs_shape: t.Tuple,
+        act_shape: t.Tuple,
+        obs_dtype: t.Type=np.float32,
+        act_dtype: t.Type=np.int32,
+    ) -> None:
+
+        self.size = size
+
+        self.obs_data = np.empty((size, *obs_shape), dtype=obs_dtype)
+        self.act_data = np.empty((size, *act_shape), dtype=act_dtype)
+        self.rew_data = np.empty((size,), dtype=np.float32)
+
+        self.history_indices = deque()
+
+    def add(self, history: Transition) -> None:
+        length = len(history.reward)
+        assert length <= self.size
+
+        # If buffer is empty, write the history starting at index 0.
+        if not self.history_indices:
+            self.write_history_at_location(history, 0)
+
+        last_entry = self.history_indices[-1][-1]
+        next_entry = self.history_indices[0][0] or self.size
+
+        # Pop history records from the buffer until we can fit current history
+        # between the end of the last entry and the beginning of the next one.
+        while next_entry - last_entry < length:
+            start, _ = self.history_indices.popleft()
+            next_entry = self.history_indices[0][0] or self.size
+            
+            # If we pop history record that starts at 0, it means that we don't have
+            # enough free space till the end of the buffer. Thus we need to write
+            # current history from the beginning of the buffer till the next record.
+            if start == 0:
+                last_entry = 0
+        
+        # Write history after the last entry in the buffer and rottate the indices deque
+        self.write_history_at_location(history, last_entry)
+
+    def write_history_at_location(self, history: Transition, loc: int) -> None:
+        length = len(history.reward)
+        
+        self.obs_data[loc:loc + length] = history.observation
+        self.act_data[loc:loc + length] = history.action
+        self.rew_data[loc:loc + length] = history.reward
+
+        self.history_indices.appendleft((loc, loc + length))
+        self.history_indices.rotate(-1)
+
+    def sample_batch(self, batch_size, history_length):
+        # TODO:
+        # 1. Sample `batch_size` of history indices proportional to their length
+        # 2. Sample one point within each history uniformly
+        pass
 
 
 
