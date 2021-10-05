@@ -6,8 +6,8 @@ import reconchess
 import torch
 import numpy as np
 
-from agents.blind_chess import TestQNet, QAgent
-from utilities.replay_buffer import ReplayBufferList
+from agents.blind_chess import TestQNet, QAgent, Transition
+from utilities.replay_buffer import ReplayBufferList, HistoryRaplayBuffer
 
 
 def policy_sampler(q_values: torch.Tensor, valid_action_indices, eps: float = 0.05) -> int:
@@ -35,13 +35,13 @@ def main():
     ]
 
     agents = [QAgent(net, functools.partial(policy_sampler, eps=0.5), narx_memory_length) for net in q_nets]
-    replay_buffer = ReplayBufferList(1000)
+    replay_buffer = HistoryRaplayBuffer(1000, (8, 8, 13), tuple())
 
     for i in range(10):
         winner_color, win_reason, game_history = reconchess.play_local_game(agents[0], agents[1])
 
-        replay_buffer.push_back(agents[0].history)
-        replay_buffer.push_back(agents[1].history)
+        replay_buffer.add(Transition.stack(agents[0].history))
+        replay_buffer.add(Transition.stack(agents[1].history))
 
 
 

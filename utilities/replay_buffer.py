@@ -85,6 +85,7 @@ class HistoryRaplayBuffer:
         # If buffer is empty, write the history starting at index 0.
         if not self.history_indices:
             self.write_history_at_location(history, 0)
+            return
 
         last_entry = self.history_indices[-1][-1]
         next_entry = self.history_indices[0][0] or self.size
@@ -101,7 +102,7 @@ class HistoryRaplayBuffer:
             if start == 0:
                 last_entry = 0
         
-        # Write history after the last entry in the buffer and rottate the indices deque
+        # Write history after the last entry in the buffer and rottate the indices deque.
         self.write_history_at_location(history, last_entry)
 
     def write_history_at_location(self, history: Transition, loc: int) -> None:

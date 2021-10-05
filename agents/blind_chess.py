@@ -330,7 +330,7 @@ class QAgent(Player):
         game_history: GameHistory
     ):
         reward = 1 if winner_color == self.color else -1
-        self.history.append(Transition(board_to_onehot(self.board), None, reward=reward))
+        self.history.append(Transition(board_to_onehot(self.board), -1, reward=reward))
 
 
 class TestQNet(torch.nn.Module):
