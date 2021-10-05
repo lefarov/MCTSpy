@@ -1,3 +1,4 @@
+import random
 import typing as t
 import numpy as np
 
@@ -120,11 +121,50 @@ class HistoryRaplayBuffer:
         self.history_indices.appendleft((loc, loc + length))
         self.history_indices.rotate(-1)
 
-    def sample_batch(self, batch_size, history_length):
-        # TODO:
-        # 1. Sample `batch_size` of history indices proportional to their length
-        # 2. Sample one point within each history uniformly
-        pass
+    def sample_batch(self, batch_size, slice_length):
+        # Sample `batch_size` of history indices proportional to their length
+        history_weights = [h[1] - h[0] for h in self.history_indices]
+        history_samples = random.choices(
+            self.history_indices, history_weights, k=batch_size
+        )
+        
+        # Sample index uniformely within the sampled histories
+        # TODO: should we always use numpy to control the random seed?
+        index_samples = [random.choice(range(h[0], h[1] - 1)) for h in history_samples]
+        
+        # Build final slice samples
+        # TODO: replace by map (easier to speed up)
+        obs_samples, act_samples, rew_samples, obs_next_samples, = [], [], [], []
+        for index, (history_start, _) in zip(index_samples, history_samples):
+
+            obs_samples.append(self.index_to_obs_sample(index, history_start, slice_length))
+            obs_next_samples.append(self.index_to_obs_sample(index + 1, history_start, slice_length))
+
+            act_samples.append(self.act_data[index])
+            rew_samples.append(self.rew_data[index])
+
+        return (
+            np.stack(obs_samples),
+            np.stack(act_samples),
+            np.stack(rew_samples),
+            np.stack(obs_next_samples),
+        )
+            
+
+    def index_to_obs_sample(self, index, history_start, target_length):
+        # Get the slice from the data storage
+        obs_slice_end = index + 1
+        obs_slice_start = max(obs_slice_end - target_length, history_start)
+        obs_slice = self.obs_data[obs_slice_start:obs_slice_end]
+
+        # Pad the time axis if needed, do not pad any other axis.
+        pads = [
+            (target_length - len(obs_slice), 0) if axis == 0
+            else (0, 0) for axis in range(obs_slice.ndim)
+        ]
+
+        return np.pad(obs_slice, pads, "edge")
+
 
 
 

@@ -43,6 +43,8 @@ def main():
         replay_buffer.add(Transition.stack(agents[0].history))
         replay_buffer.add(Transition.stack(agents[1].history))
 
+    replay_buffer.sample_batch(10, 100)
+
 
 
 
