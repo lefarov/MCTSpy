@@ -8,6 +8,7 @@ import chess.engine
 import typing as t
 import torch
 import numpy as np
+from dataclasses import dataclass
 
 from reconchess import Color, Player, Square, GameHistory, WinReason
 
@@ -20,14 +21,22 @@ from simulations.blind_chess import (
 )
 
 
-class Transition(t.NamedTuple):
+@dataclass
+class Transition:
     observation: np.ndarray
     action: int
     reward: float
+    action_opponent: int = -1
+
+    def __iter__(self):
+        yield self.observation
+        yield self.action
+        yield self.reward
+        yield self.action_opponent
 
     @classmethod
     def stack(cls, transitions: t.Sequence):
-        """Convert a sequence of nameduples into a namedpule of sequences."""
+        """Convert a sequence of namedtuples into a namedtuples of sequences."""
 
         def stacking_map(transitions):
             for items in zip(*transitions):
@@ -220,7 +229,7 @@ class QAgent(Player):
         self.policy_sampler = policy_sampler
         self.memory_length = narx_memory_length
 
-        self.history = []
+        self.history = []  # type: t.List[Transition]
 
     def handle_game_start(
         self, color: Color, board: chess.Board, opponent_name: str
@@ -330,7 +339,7 @@ class QAgent(Player):
         game_history: GameHistory
     ):
         reward = 1 if winner_color == self.color else -1
-        self.history.append(Transition(board_to_onehot(self.board), -1, reward=reward))
+        self.history[-1].reward = reward
 
 
 class TestQNet(torch.nn.Module):

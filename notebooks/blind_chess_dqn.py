@@ -2,12 +2,13 @@ import functools
 import operator
 import random
 
+import chess
 import reconchess
 import torch
 import numpy as np
 
 from agents.blind_chess import TestQNet, QAgent, Transition
-from utilities.replay_buffer import ReplayBufferList, HistoryRaplayBuffer
+from utilities.replay_buffer import HistoryReplayBuffer
 
 
 def policy_sampler(q_values: torch.Tensor, valid_action_indices, eps: float = 0.05) -> int:
@@ -23,11 +24,15 @@ def policy_sampler(q_values: torch.Tensor, valid_action_indices, eps: float = 0.
     return action_index
 
 
-
 def main():
 
     narx_memory_length = 12
     n_hidden = 256
+    n_steps = 10
+    n_batches_per_step = 10
+    n_games_per_step = 10
+    batch_size = 10
+    slice_size = 100
 
     q_nets = [
         TestQNet(narx_memory_length, n_hidden),
@@ -35,15 +40,32 @@ def main():
     ]
 
     agents = [QAgent(net, functools.partial(policy_sampler, eps=0.5), narx_memory_length) for net in q_nets]
-    replay_buffer = HistoryRaplayBuffer(1000, (8, 8, 13), tuple())
+    replay_buffer = HistoryReplayBuffer(1000, (8, 8, 13), tuple())
 
-    for i in range(10):
-        winner_color, win_reason, game_history = reconchess.play_local_game(agents[0], agents[1])
+    for i_step in range(n_steps):
+        for i_game in range(n_games_per_step):
+            winner_color, win_reason, game_history = reconchess.play_local_game(agents[0], agents[1])
+            # TODO: Adjust the rewards like in AlphaStar (propagate from the last step back).
+            # TODO: Check that the agent's color is randomly selected.
 
-        replay_buffer.add(Transition.stack(agents[0].history))
-        replay_buffer.add(Transition.stack(agents[1].history))
+            white_index = 0 if agents[0].color == chess.WHITE else 1
+            black_index = 1 - white_index
+            history_length = min(len(agent.history) for agent in agents)
+            for i_move in range(history_length - 1):
+                # TODO: Correct?
+                agents[white_index].history[i_move].action_opponent = agents[black_index].history[i_move].action
+                agents[black_index].history[i_move].action_opponent = agents[white_index].history[i_move].action
 
-    replay_buffer.sample_batch(10, 100)
+            # TODO: Save opponent's actions to train the predictor.
+            replay_buffer.add(Transition.stack(agents[0].history))
+            replay_buffer.add(Transition.stack(agents[1].history))
+
+
+        for i_batch in range(n_batches_per_step):
+            batch_obs, batch_act, batch_rew, batch_obs_next = replay_buffer.sample_batch(batch_size, slice_size)
+
+            batch_q = q_nets[0]()
+
 
 
 
