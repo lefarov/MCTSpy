@@ -47,15 +47,10 @@ def main():
         for i_game in range(n_games_per_step):
             winner_color, win_reason, game_history = reconchess.play_local_game(agents[0], agents[1])
             # TODO: Adjust the rewards like in AlphaStar (propagate from the last step back).
-            # TODO: Check that the agent's color is randomly selected.
+            # TODO: Implement sampling of the colors.
 
             white_index = 0 if agents[0].color == chess.WHITE else 1
             black_index = 1 - white_index
-            # history_length = min(len(agent.history) for agent in agents)
-            # for i_move in range(history_length - 1):
-            #     # TODO: Correct?
-            #     agents[white_index].history[i_move].action_opponent = agents[black_index].history[i_move].action
-            #     agents[black_index].history[i_move].action_opponent = agents[white_index].history[i_move].action
 
             # Zipper that will iterate until the end of the longest sequence and
             # pad missing data of shorter sequences with the transitions containing
@@ -74,13 +69,18 @@ def main():
                 transition_white.action_opponent = transition_black.action
                 transition_black.action_opponent = transition_white_next.action
 
-            # TODO: Save opponent's actions to train the predictor.
             replay_buffer.add(Transition.stack(agents[0].history))
             replay_buffer.add(Transition.stack(agents[1].history))
 
 
         for i_batch in range(n_batches_per_step):
-            batch_obs, batch_act, batch_rew, batch_obs_next = replay_buffer.sample_batch(batch_size, slice_size)
+            (
+                batch_obs,
+                batch_act,
+                batch_rew,
+                batch_obs_next,
+                batch_act_opponent,
+             ) = replay_buffer.sample_batch(batch_size, slice_size)
 
             batch_q = q_nets[0]()
 

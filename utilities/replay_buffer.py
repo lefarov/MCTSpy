@@ -21,10 +21,17 @@ class HistoryReplayBuffer:
     ) -> None:
 
         self.size = size
+        self.obs_shape = obs_shape
+        self.obs_dtype = obs_dtype
+        self.act_shape = act_shape
+        self.act_dtype = act_dtype
 
         self.obs_data = np.empty((size, *obs_shape), dtype=obs_dtype)
         self.act_data = np.empty((size, *act_shape), dtype=act_dtype)
         self.rew_data = np.empty((size,), dtype=np.float32)
+        
+        # Data for the opponents' moves
+        self.act_opponent_data = np.empty((size, *act_shape), dtype=act_dtype)
 
         self.history_indices = deque()
 
@@ -67,37 +74,59 @@ class HistoryReplayBuffer:
         self.act_data[loc:loc + length] = history.action
         self.rew_data[loc:loc + length] = history.reward
 
+        self.act_opponent_data[loc:loc + length] = history.action_opponent
+
         self.history_indices.appendleft((loc, loc + length))
         self.history_indices.rotate(-1)
 
-    def sample_batch(self, batch_size, slice_length):
+    def sample_batch(self, batch_size, slice_length, action = "move"):
+        """ Sample the batch of data for the given type of action.
+        
+        TODO: should we always use numpy to control the random seed?
+        """
+        # Prepare datastorage for batch
+        obs_batch_shape = (batch_size, slice_length, *self.obs_shape)
+        obs_batch = np.empty(obs_batch_shape, dtype=self.obs_dtype)
+        obs_next_batch = np.empty(obs_batch_shape, dtype=self.obs_dtype)
+        
+        act_batch_shape = (batch_size, *self.act_shape)
+        act_batch = np.empty(act_batch_shape, dtype=self.act_dtype)
+        act_opponent_batch = np.empty(act_batch_shape, dtype=self.act_dtype)
+        
+        rew_batch = np.empty((batch_size, ), dtype=np.float32)
+
         # Sample `batch_size` of history indices proportional to their length
         history_weights = [h[1] - h[0] for h in self.history_indices]
         history_samples = random.choices(
             self.history_indices, history_weights, k=batch_size
         )
+
+        for i, history in enumerate(history_samples):
+            indices = list(range(history[0], history[1] - 1))
+
+            # Slice histroy entries that correspond to correct action type
+            if action == "move":
+                indices = indices[1::2]
+            elif action == "sense":
+                indices = indices[0::2]
+            else:
+                raise ValueError("Unknown action type.")
+
+            # Sample index uniformly
+            index = random.choice(indices)
         
-        # Sample index uniformely within the sampled histories
-        # TODO: should we always use numpy to control the random seed?
-        index_samples = [random.choice(range(h[0], h[1] - 1)) for h in history_samples]
-        
-        # Build final slice samples
-        # TODO: replace by map (easier to speed up)
-        obs_samples, act_samples, rew_samples, obs_next_samples, = [], [], [], []
-        for index, (history_start, _) in zip(index_samples, history_samples):
+            obs_slice = self.index_to_obs_sample(index, history[0], slice_length)
+            obs_next_slice = self.index_to_obs_sample(
+                index + 1, history[0], slice_length
+            )
 
-            obs_samples.append(self.index_to_obs_sample(index, history_start, slice_length))
-            obs_next_samples.append(self.index_to_obs_sample(index + 1, history_start, slice_length))
+            obs_batch[i] = obs_slice
+            act_batch[i] = self.act_data[index]
+            rew_batch[i] = self.rew_data[index]
+            obs_next_batch[i] = obs_next_slice
+            act_opponent_batch[i] = self.act_opponent_data[index]
 
-            act_samples.append(self.act_data[index])
-            rew_samples.append(self.rew_data[index])
-
-        return (
-            np.stack(obs_samples),
-            np.stack(act_samples),
-            np.stack(rew_samples),
-            np.stack(obs_next_samples),
-        )
+        return obs_batch, act_batch, rew_batch, obs_next_batch, act_opponent_batch,
             
 
     def index_to_obs_sample(self, index, history_start, target_length):
