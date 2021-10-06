@@ -57,9 +57,15 @@ def main():
             #     agents[white_index].history[i_move].action_opponent = agents[black_index].history[i_move].action
             #     agents[black_index].history[i_move].action_opponent = agents[white_index].history[i_move].action
 
+            # Zipper that will iterate until the end of the longest sequence and
+            # pad missing data of shorter sequences with the transitions containing
+            # default opponent action as the recorded action.
             padded_zipper = functools.partial(
                 itertools.zip_longest, fillvalue=Transition(None, -1, None)
             )
+
+            # Iterate over 3 transitions windows: (1) with Move actions of the white player
+            # (2) Move actions of the black player and (3) white Move actions shifted by one timestep forward.
             for transition_white, transition_black, transition_white_next in padded_zipper(
                 agents[white_index].history[1::2],
                 agents[black_index].history[1::2],
