@@ -1,6 +1,7 @@
 import functools
 import operator
 import random
+import itertools
 
 import chess
 import reconchess
@@ -50,11 +51,22 @@ def main():
 
             white_index = 0 if agents[0].color == chess.WHITE else 1
             black_index = 1 - white_index
-            history_length = min(len(agent.history) for agent in agents)
-            for i_move in range(history_length - 1):
-                # TODO: Correct?
-                agents[white_index].history[i_move].action_opponent = agents[black_index].history[i_move].action
-                agents[black_index].history[i_move].action_opponent = agents[white_index].history[i_move].action
+            # history_length = min(len(agent.history) for agent in agents)
+            # for i_move in range(history_length - 1):
+            #     # TODO: Correct?
+            #     agents[white_index].history[i_move].action_opponent = agents[black_index].history[i_move].action
+            #     agents[black_index].history[i_move].action_opponent = agents[white_index].history[i_move].action
+
+            padded_zipper = functools.partial(
+                itertools.zip_longest, fillvalue=Transition(None, -1, None)
+            )
+            for transition_white, transition_black, transition_white_next in padded_zipper(
+                agents[white_index].history[1::2],
+                agents[black_index].history[1::2],
+                agents[white_index].history[3::2],
+            ):
+                transition_white.action_opponent = transition_black.action
+                transition_black.action_opponent = transition_white_next.action
 
             # TODO: Save opponent's actions to train the predictor.
             replay_buffer.add(Transition.stack(agents[0].history))
