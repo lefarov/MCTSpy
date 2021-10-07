@@ -3,10 +3,8 @@ import typing as t
 import numpy as np
 
 from collections import deque
-from heapq import heappush, heappop
 
 from agents.blind_chess import Transition
-
 
 
 class HistoryReplayBuffer:

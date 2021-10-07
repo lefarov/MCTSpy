@@ -82,10 +82,8 @@ def main():
                 batch_act_opponent,
              ) = replay_buffer.sample_batch(batch_size, slice_size)
 
-            batch_q = q_nets[0]()
-
-
-
+            state_val, sense_adv, move_adv, opponent_move  = q_nets[0]()
+            
 
 
 if __name__ == '__main__':
