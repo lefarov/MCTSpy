@@ -27,7 +27,7 @@ def policy_sampler(q_values: torch.Tensor, valid_action_indices, eps: float = 0.
 
 def main():
 
-    narx_memory_length = 12
+    narx_memory_length = 50
     n_hidden = 256
     n_steps = 10
     n_batches_per_step = 10
@@ -74,17 +74,23 @@ def main():
 
 
         for i_batch in range(n_batches_per_step):
+            data = replay_buffer.sample_batch(batch_size, narx_memory_length)
             (
                 batch_obs,
                 batch_act,
                 batch_rew,
                 batch_obs_next,
                 batch_act_opponent,
-             ) = replay_buffer.sample_batch(batch_size, slice_size)
+             ) = map(torch.as_tensor, data)
 
-            state_val, sense_adv, move_adv, opponent_move  = q_nets[0]()
-            
+            state_val, sense_adv, move_adv, opponent_move  = q_nets[0](batch_obs)
 
+            # Compute Q-values for selected move actions
+            move_adv_selected = move_adv.gather(-1, batch_act.long().unsqueeze(-1))
+            move_adv_mean = move_adv.mean(-1, keepdim=True)
+            q_val_selected = state_val + move_adv_selected - move_adv_mean
+
+            pass
 
 if __name__ == '__main__':
     main()
