@@ -107,13 +107,14 @@ def main():
 
     narx_memory_length = 50
     replay_size = 50000
-    batch_size = 1024
+    batch_size = 64
     n_hidden = 256
-    n_steps = 100
+    n_steps = 10
     n_batches_per_step = 10
     n_games_per_step = 10
     lr_start = 0.01
     lr_end = 0.0001
+    gamma = 1
     gradient_clip = 100
 
     q_nets = [
