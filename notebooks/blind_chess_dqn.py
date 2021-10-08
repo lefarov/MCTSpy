@@ -143,7 +143,7 @@ def main():
 
         for i_game in range(n_games_per_step):
             winner_color, win_reason, game_history = reconchess.play_local_game(agents[0], agents[1])
-            # TODO: Adjust the rewards like in AlphaStar (propagate from the last step back).
+            # TODO: Implement return estimation as in Apex-DQN.
             # TODO: Implement sampling of the colors.
 
             white_index = 0 if agents[0].color == chess.WHITE else 1
@@ -188,7 +188,8 @@ def main():
              ) = map(convert_to_tensor, data)
 
             # Compute opponnet loss
-            # TODO: can we do single propr through network?
+            # TODO: can we do single prop through network?
+            # TODO: adjust TD error scaling
             *_, pred_act_opponent = q_nets[0](batch_obs)
             opponent_act_loss = opponents_act_loss(
                 pred_act_opponent, batch_act_opponent.squeeze(-1)
