@@ -355,27 +355,41 @@ class TestQNet(torch.nn.Module):
         # D (depth) - history length, H and W are board dimentions (i.e. 8x8).
 
         self.conv_stack = torch.nn.Sequential(
+            # torch.nn.Conv3d(
+            #     in_channels=len(PIECE_INDEX),
+            #     out_channels=self.channels_per_layer[0],
+            #     kernel_size=(3, 3, 3),
+            #     # stride=(2, 2, 2)
+            # ),
+            # torch.nn.ReLU(),
+            # torch.nn.Conv3d(
+            #     in_channels=self.channels_per_layer[0],
+            #     out_channels=self.channels_per_layer[1],
+            #     kernel_size=(3, 3, 3),
+            #     # stride=(2, 2, 2)
+            # ),
+            # torch.nn.ReLU(),
+            # torch.nn.Conv3d(
+            #     in_channels=self.channels_per_layer[1],
+            #     out_channels=self.channels_per_layer[2],
+            #     kernel_size=(3, 3, 3),
+            #     # stride=(2, 2, 2)
+            # ),
+            # torch.nn.ReLU()
             torch.nn.Conv3d(
                 in_channels=len(PIECE_INDEX),
-                out_channels=self.channels_per_layer[0],
-                kernel_size=(3, 3, 3),
-                # stride=(2, 2, 2)
+                out_channels=64,
+                kernel_size=(5, 5, 5),
+                stride=(3, 3, 3)
             ),
             torch.nn.ReLU(),
-            torch.nn.Conv3d(
-                in_channels=self.channels_per_layer[0],
-                out_channels=self.channels_per_layer[1],
-                kernel_size=(3, 3, 3),
-                # stride=(2, 2, 2)
-            ),
-            torch.nn.ReLU(),
-            torch.nn.Conv3d(
-                in_channels=self.channels_per_layer[1],
-                out_channels=self.channels_per_layer[2],
-                kernel_size=(3, 3, 3),
-                # stride=(2, 2, 2)
-            ),
-            torch.nn.ReLU()
+            # torch.nn.Conv3d(
+            #     in_channels=64,
+            #     out_channels=128,
+            #     kernel_size=(3, 3, 3),
+            #     stride=(3, 3, 3)
+            # ),
+            # torch.nn.ReLU()
         )
 
         dummy_input = torch.zeros((1, len(PIECE_INDEX), self.narx_memory_length, 8, 8))

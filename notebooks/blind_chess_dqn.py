@@ -1,4 +1,6 @@
 import functools
+import operator
+
 import torch
 import random
 import itertools
@@ -12,7 +14,7 @@ import reconchess
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from agents.blind_chess import TestQNet, QAgent, Transition
+from agents.blind_chess import TestQNet, QAgent, Transition, RandomBot
 from utilities.replay_buffer import HistoryReplayBuffer
 
 
@@ -88,7 +90,7 @@ def q_loss(
 
         else:
             # Select max Q value for the observation at t+1
-            q_opt_next, _ = torch.max(q_values_next, dim=-1, keepdim=True)
+            q_opt_next = torch.max(q_values_next, dim=-1, keepdim=True)
 
         # Target estimate for Cumulative Discounted Reward
         q_values_target = rew + discount * q_opt_next * (1. - done)
@@ -108,12 +110,14 @@ def main():
     narx_memory_length = 50
     replay_size = 50000
     batch_size = 64
-    n_hidden = 256
+    n_hidden = 32
     n_steps = 10
     n_batches_per_step = 10
     n_games_per_step = 10
+    n_test_games = 100
     lr_start = 0.01
     lr_end = 0.0001
+    loss_weights = (1e-5, 1., 1.)
     gamma = 1
     gradient_clip = 100
 
@@ -129,19 +133,28 @@ def main():
     q_net_target.eval()
 
     # Opponent move loss
-    opponents_act_loss = torch.nn.CrossEntropyLoss()
+    opponent_act_loss_func = torch.nn.CrossEntropyLoss()
 
-    # Optimzer
+    # Optimizer
     optimizer = Adam(q_nets[0].parameters(), lr=lr_start)
     lr_scheduler = CosineAnnealingLR(optimizer, n_steps, lr_end)
 
-    agents = [QAgent(net, functools.partial(policy_sampler, eps=0.5), narx_memory_length) for net in q_nets]
+    for stack in (q_nets[0].conv_stack, q_nets[0].fc_stack, q_nets[0]):
+        net_size = 0
+        for param in stack.parameters():
+            net_size += param.numel()
+        print(f"Stack size: {net_size}")
+
+    agents = [QAgent(net, functools.partial(policy_sampler, eps=0.2), narx_memory_length) for net in q_nets]
+    test_agent = QAgent(q_nets[0], functools.partial(policy_sampler, eps=0.0), narx_memory_length)
+    random_agent = RandomBot()
+
     replay_buffer = HistoryReplayBuffer(replay_size, (8, 8, 13), tuple())
 
     for i_step in range(n_steps):
+        print(f"Step {i_step + 1} / {n_steps}")
 
-        win_rate = 0.0
-
+        print("Playing.")
         for i_game in range(n_games_per_step):
             winner_color, win_reason, game_history = reconchess.play_local_game(agents[0], agents[1])
             # TODO: Implement return estimation as in Apex-DQN.
@@ -170,13 +183,7 @@ def main():
             replay_buffer.add(Transition.stack(agents[0].history))
             replay_buffer.add(Transition.stack(agents[1].history))
 
-            if winner_color == chess.WHITE:
-                win_rate += 1.0
-        
-        win_rate /= n_games_per_step
-        wandb.log({"win_rate": win_rate})
-
-
+        print("Training.")
         for i_batch in range(n_batches_per_step):
             # Sample Move data
             data = replay_buffer.sample_batch(batch_size, narx_memory_length, "move")
@@ -192,11 +199,11 @@ def main():
             # TODO: can we do single prop through network?
             # TODO: adjust TD error scaling
             *_, pred_act_opponent = q_nets[0](batch_obs)
-            opponent_act_loss = opponents_act_loss(
+            opponent_act_loss = opponent_act_loss_func(
                 pred_act_opponent, batch_act_opponent.squeeze(-1)
             )
 
-            total_loss = opponent_act_loss
+            total_loss = loss_weights[0] * opponent_act_loss
 
             # Compute Move loss
             move_loss = q_loss(
@@ -210,7 +217,7 @@ def main():
                 torch.where(batch_rew != 0, 1., 0.)
             )
 
-            total_loss += move_loss
+            total_loss += loss_weights[1] * move_loss
 
             # Sample Sense data
             data = replay_buffer.sample_batch(batch_size, narx_memory_length, "sense")
@@ -234,16 +241,16 @@ def main():
                 torch.where(batch_rew != 0, 1., 0.)
             )
 
-            total_loss += sense_loss
+            total_loss += loss_weights[2] * sense_loss
             # TODO: normalize losses
-            # TODO: move everythin to GPU
+            # TODO: move everything to GPU
 
             # Optimize the model
             optimizer.zero_grad()
             total_loss.backward()
             
-            for _, param in q_nets[0].named_parameters():
-                param.grad.data.clamp_(gradient_clip, gradient_clip)
+            # for _, param in q_nets[0].named_parameters():
+            #     param.grad.data.clamp_(gradient_clip, gradient_clip)
 
             optimizer.step()
 
@@ -253,7 +260,18 @@ def main():
                 "sense_loss": sense_loss,
                 "opponent_act_loss": opponent_act_loss,
             })
-        
+
+        print("Evaluation.")
+        win_rate = 0
+        for i_test_game in range(n_test_games):
+            # TODO: Implement sampling of the colors.
+            winner_color, win_reason, game_history = reconchess.play_local_game(test_agent, random_agent)
+
+            if winner_color == chess.WHITE:
+                win_rate += 1
+
+        wandb.log({"win_rate": win_rate / n_test_games})
+
         # Update learning rate
         lr_scheduler.step()
 
