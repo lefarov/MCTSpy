@@ -1,12 +1,13 @@
 import functools
-import operator
+import torch
 import random
 import itertools
+import typing as t
+import numpy as np
 
 import chess
 import reconchess
-import torch
-import numpy as np
+
 
 from agents.blind_chess import TestQNet, QAgent, Transition
 from utilities.replay_buffer import HistoryReplayBuffer
@@ -25,6 +26,78 @@ def policy_sampler(q_values: torch.Tensor, valid_action_indices, eps: float = 0.
     return action_index
 
 
+def q_selector(q_net: torch.nn.Module, action: str="move") -> t.Callable:
+    # TODO: replace string by Enum
+    # Select reqested output of the Q-net
+    if action == "move":
+        index = 2
+    elif action == "sense":
+        index = 1
+    else:
+        raise ValueError("Unknown action type.")
+
+    def selector(obs):
+        return q_net(obs)[index]
+
+    return selector
+
+
+def convert_to_tensor(array: np.ndarray) -> torch.Tensor:
+    tensor = torch.as_tensor(array)
+    # If tensor has only batch dimension, insert a singular dimension
+    if tensor.ndim == 1:
+        tensor = tensor.unsqueeze(-1)
+
+    # Torch indexing supports only int64
+    if tensor.dtype == torch.int32:
+        tensor = tensor.long()
+
+    return tensor
+
+
+def q_loss(
+    model: torch.nn.Module,
+    model_target: torch.nn.Module,
+    obs: torch.Tensor,
+    act: torch.Tensor,
+    rew: torch.Tensor,
+    obs_next: torch.Tensor,
+    done: torch.Tensor,
+    discount: int=0.9,
+    double_q: bool=True,
+) -> torch.Tensor:
+        # Compute Q values for observation at t
+        q_values = model(obs)
+        # Select Q values for chosen actions
+        q_values_selected = q_values.gather(-1, act)
+
+        with torch.no_grad():
+            # Compute Q values for next observation using target model
+            q_values_next = model_target(obs_next)
+
+        if double_q:
+            # Double Q idea: select the optimum action for the observation at t+1
+            # using the trainable model, but compute it's Q value with target one
+            q_values_next_estimate = model(obs_next)
+            q_opt_next = q_values_next.gather(
+                -1, torch.argmax(q_values_next_estimate, dim=-1, keepdim=True)
+            )
+
+        else:
+            # Select max Q value for the observation at t+1
+            q_opt_next, _ = torch.max(q_values_next, dim=-1, keepdim=True)
+
+        # Target estimate for Cumulative Discounted Reward
+        q_values_target = rew + discount * q_opt_next * (1. - done)
+
+        # Compute TD error
+        loss = torch.nn.functional.smooth_l1_loss(
+            q_values_selected, q_values_target
+        )
+
+        return loss
+
+
 def main():
 
     narx_memory_length = 50
@@ -33,12 +106,15 @@ def main():
     n_batches_per_step = 10
     n_games_per_step = 10
     batch_size = 10
-    slice_size = 100
 
     q_nets = [
         TestQNet(narx_memory_length, n_hidden),
         TestQNet(narx_memory_length, n_hidden),
     ]
+
+    # We can also clone the first Q-net, but I'm not sure that it's necessary 
+    q_net_target = TestQNet(narx_memory_length, n_hidden)
+    q_net_target.eval()
 
     agents = [QAgent(net, functools.partial(policy_sampler, eps=0.5), narx_memory_length) for net in q_nets]
     replay_buffer = HistoryReplayBuffer(1000, (8, 8, 13), tuple())
@@ -74,23 +150,49 @@ def main():
 
 
         for i_batch in range(n_batches_per_step):
-            data = replay_buffer.sample_batch(batch_size, narx_memory_length)
+            # Sample Move data
+            data = replay_buffer.sample_batch(batch_size, narx_memory_length, "move")
             (
                 batch_obs,
                 batch_act,
                 batch_rew,
                 batch_obs_next,
                 batch_act_opponent,
-             ) = map(torch.as_tensor, data)
+             ) = map(convert_to_tensor, data)
 
-            state_val, sense_adv, move_adv, opponent_move  = q_nets[0](batch_obs)
+            # Compute Move loss
+            move_loss = q_loss(
+                q_selector(q_nets[0], "move"),
+                q_selector(q_net_target, "move"),
+                batch_obs,
+                batch_act,
+                batch_rew,
+                batch_obs_next,
+                # TODO: implement explicit saving for `done`
+                torch.where(batch_rew != 0, 1., 0.)
+            )
 
-            # Compute Q-values for selected move actions
-            move_adv_selected = move_adv.gather(-1, batch_act.long().unsqueeze(-1))
-            move_adv_mean = move_adv.mean(-1, keepdim=True)
-            q_val_selected = state_val + move_adv_selected - move_adv_mean
+            # Sample Sense data
+            data = replay_buffer.sample_batch(batch_size, narx_memory_length, "sense")
+            (
+                batch_obs,
+                batch_act,
+                batch_rew,
+                batch_obs_next,
+                batch_act_opponent,
+             ) = map(convert_to_tensor, data)
 
-            pass
+            # Compute Sense loss
+            move_loss = q_loss(
+                q_selector(q_nets[0], "sense"),
+                q_selector(q_net_target, "sense"),
+                batch_obs,
+                batch_act,
+                batch_rew,
+                batch_obs_next,
+                # TODO: implement explicit saving for `done`
+                torch.where(batch_rew != 0, 1., 0.)
+            )
 
 if __name__ == '__main__':
     main()

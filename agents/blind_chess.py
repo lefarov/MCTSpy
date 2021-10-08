@@ -271,12 +271,10 @@ class QAgent(Player):
         self.add_to_memory(board_to_onehot(self.board))
 
         with torch.no_grad():
-            # Compute state Value and Advantages for every sense action 
+            # Compute state Value and Q-value for every sense action 
             q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32).unsqueeze(0)  # Add the batch dim.
-            state_v, sense_adv, *_ = self.q_net(q_net_input)
+            state_v, sense_q, *_ = self.q_net(q_net_input)
 
-            # Compute Q value
-            sense_q = state_v + sense_adv - sense_adv.mean()
             sense_index = self.policy_sampler(sense_q.squeeze(0), list(range(64)))
 
         self.history.append(Transition(board_to_onehot(self.board), sense_index, reward=0))
@@ -301,11 +299,10 @@ class QAgent(Player):
         moves_indices = list(map(move_to_index, move_actions))
 
         with torch.no_grad():
-            # Compute state Value and Advantages for every move action
+            # Compute state Value and Q-value for every move action
             q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32).unsqueeze(0)  # Add the batch dim.
-            state_v, _, move_adv, *_ = self.q_net(q_net_input)
-            # Compute the Q value.
-            move_q = state_v + move_adv - move_adv.mean()  # Squeeze out the batch dim.
+            state_v, _, move_q, *_ = self.q_net(q_net_input)
+            
             move_index = self.policy_sampler(move_q.squeeze(0), moves_indices)
 
         # Convert index of an action to chess Move
@@ -411,9 +408,13 @@ class TestQNet(torch.nn.Module):
 
         # Compute heads
         state_val = torch.nn.functional.relu(self.fc_state_val(x))
+        
         sense_adv = torch.nn.functional.relu(self.fc_sense_adv(x))
+        sense_q = state_val + sense_adv - sense_adv.mean(-1, keepdim=True)
+        
         move_adv = torch.nn.functional.relu(self.fc_move_adv(x))
+        move_q = state_val + move_adv - move_adv.mean(-1, keepdim=True)
 
         opponent_move = torch.nn.functional.relu(self.fc_opponent_move(x))
 
-        return state_val, sense_adv, move_adv, opponent_move
+        return state_val, sense_q, move_q, opponent_move
