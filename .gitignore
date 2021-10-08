@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 stockfish/
+wandb/
 
 # C extensions
 *.so

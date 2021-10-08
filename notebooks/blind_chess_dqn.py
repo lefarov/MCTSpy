@@ -2,12 +2,15 @@ import functools
 import torch
 import random
 import itertools
+import wandb
 import typing as t
 import numpy as np
 
 import chess
 import reconchess
 
+from torch.optim import Adam
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from agents.blind_chess import TestQNet, QAgent, Transition
 from utilities.replay_buffer import HistoryReplayBuffer
@@ -100,26 +103,44 @@ def q_loss(
 
 def main():
 
+    wandb.init(project="blind_chess", entity="not-working-solutions")
+
     narx_memory_length = 50
+    replay_size = 50000
+    batch_size = 1024
     n_hidden = 256
-    n_steps = 10
+    n_steps = 100
     n_batches_per_step = 10
     n_games_per_step = 10
-    batch_size = 10
+    lr_start = 0.01
+    lr_end = 0.0001
+    gradient_clip = 100
 
     q_nets = [
         TestQNet(narx_memory_length, n_hidden),
         TestQNet(narx_memory_length, n_hidden),
     ]
 
+    wandb.watch(q_nets[0])
+
     # We can also clone the first Q-net, but I'm not sure that it's necessary 
     q_net_target = TestQNet(narx_memory_length, n_hidden)
     q_net_target.eval()
 
+    # Opponent move loss
+    opponents_act_loss = torch.nn.CrossEntropyLoss()
+
+    # Optimzer
+    optimizer = Adam(q_nets[0].parameters(), lr=lr_start)
+    lr_scheduler = CosineAnnealingLR(optimizer, n_steps, lr_end)
+
     agents = [QAgent(net, functools.partial(policy_sampler, eps=0.5), narx_memory_length) for net in q_nets]
-    replay_buffer = HistoryReplayBuffer(1000, (8, 8, 13), tuple())
+    replay_buffer = HistoryReplayBuffer(replay_size, (8, 8, 13), tuple())
 
     for i_step in range(n_steps):
+
+        win_rate = 0.0
+
         for i_game in range(n_games_per_step):
             winner_color, win_reason, game_history = reconchess.play_local_game(agents[0], agents[1])
             # TODO: Adjust the rewards like in AlphaStar (propagate from the last step back).
@@ -148,6 +169,12 @@ def main():
             replay_buffer.add(Transition.stack(agents[0].history))
             replay_buffer.add(Transition.stack(agents[1].history))
 
+            if winner_color == chess.WHITE:
+                win_rate += 1.0
+        
+        win_rate /= n_games_per_step
+        wandb.log({"win_rate": win_rate})
+
 
         for i_batch in range(n_batches_per_step):
             # Sample Move data
@@ -159,6 +186,15 @@ def main():
                 batch_obs_next,
                 batch_act_opponent,
              ) = map(convert_to_tensor, data)
+
+            # Compute opponnet loss
+            # TODO: can we do single propr through network?
+            *_, pred_act_opponent = q_nets[0](batch_obs)
+            opponent_act_loss = opponents_act_loss(
+                pred_act_opponent, batch_act_opponent.squeeze(-1)
+            )
+
+            total_loss = opponent_act_loss
 
             # Compute Move loss
             move_loss = q_loss(
@@ -172,6 +208,8 @@ def main():
                 torch.where(batch_rew != 0, 1., 0.)
             )
 
+            total_loss += move_loss
+
             # Sample Sense data
             data = replay_buffer.sample_batch(batch_size, narx_memory_length, "sense")
             (
@@ -179,11 +217,11 @@ def main():
                 batch_act,
                 batch_rew,
                 batch_obs_next,
-                batch_act_opponent,
+                _,
              ) = map(convert_to_tensor, data)
 
             # Compute Sense loss
-            move_loss = q_loss(
+            sense_loss = q_loss(
                 q_selector(q_nets[0], "sense"),
                 q_selector(q_net_target, "sense"),
                 batch_obs,
@@ -193,6 +231,30 @@ def main():
                 # TODO: implement explicit saving for `done`
                 torch.where(batch_rew != 0, 1., 0.)
             )
+
+            total_loss += sense_loss
+            # TODO: normalize losses
+            # TODO: move everythin to GPU
+
+            # Optimize the model
+            optimizer.zero_grad()
+            total_loss.backward()
+            
+            for _, param in q_nets[0].named_parameters():
+                param.grad.data.clamp_(gradient_clip, gradient_clip)
+
+            optimizer.step()
+
+            wandb.log({
+                "total_loss": total_loss,
+                "move_loss": move_loss,
+                "sense_loss": sense_loss,
+                "opponent_act_loss": opponent_act_loss,
+            })
+        
+        # Update learning rate
+        lr_scheduler.step()
+
 
 if __name__ == '__main__':
     main()
