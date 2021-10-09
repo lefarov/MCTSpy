@@ -10,14 +10,19 @@ import torch
 import numpy as np
 from dataclasses import dataclass
 
-from reconchess import Color, Player, Square, GameHistory, WinReason
+from reconchess import (
+    Color,
+    Player,
+    Square,
+    GameHistory,
+    WinReason,
+)
 
 from simulations.blind_chess import (
-    board_to_index_encoding,
     board_to_onehot,
-    move_to_onehot,
     index_to_move,
-    PIECE_INDEX, move_to_index,
+    move_to_index,
+    PIECE_INDEX,
 )
 
 
@@ -45,37 +50,59 @@ class Transition:
         return cls(*stacking_map(transitions))
 
 
-class RandomBot(Player):
-    """
-    Bot that selects randomly from the set of available actions.
-    
-    Copied from https://reconchess.readthedocs.io/en/latest/bot_create.html.
-    """
+# Chess pieces values according to https://www.chess.com/terms/chess-piece-value
+PIECE_VALUE = {
+    chess.PAWN: 1/8,
+    chess.KNIGHT: 3/8,
+    chess.BISHOP: 3/8,
+    chess.ROOK: 5/8,
+    chess.QUEEN: 8/8,
+    chess.KING: 8/8,
+}
+
+
+class PlayerWithBoardHistory(Player):
+    """ Player subclass that maintains board state and records its history."""
+
+    def __init__(
+        self, capture_reward_func=None, move_reward_func=None, sense_reward_func=None
+    ) -> None:
+
+        self.board = None
+        self.color = None
+
+        self.capture_reward_func = capture_reward_func
+        self.move_reward_func = move_reward_func
+        self.sense_reward_func = sense_reward_func
+
+        self.history = []  # type: t.List[Transition]
+
     def handle_game_start(
         self, color: Color, board: chess.Board, opponent_name: str
     ):
-        pass
+        # Initialize board and color
+        self.board = board
+        self.color = color
+
+        self.history = []
 
     def handle_opponent_move_result(
-        self, captured_my_piece: bool, capture_square: t.Optional[Square]):
-        pass
-
-    def choose_sense(
-        self, sense_actions: t.List[Square], 
-        move_actions: t.List[chess.Move], 
-        seconds_left: float
-    ) -> t.Optional[Square]:
-        return random.choice(sense_actions)
+        self, captured_my_piece: bool, capture_square: t.Optional[Square]
+    ):
+        if captured_my_piece:
+            piece = self.board.remove_piece_at(capture_square)
+            if self.capture_reward_func is not None:
+                self.history[-1].reward += self.capture_reward_func(piece, lost=True)
+    
 
     def handle_sense_result(
         self, sense_result: t.List[t.Tuple[Square, t.Optional[chess.Piece]]]
     ):
-        pass
-
-    def choose_move(
-        self, move_actions: t.List[chess.Move], seconds_left: float
-    ) -> t.Optional[chess.Move]:
-        return random.choice(move_actions + [None])
+        for square, piece in sense_result:
+            if piece is not None:
+                self.board.set_piece_at(square, piece)
+                if self.sense_reward_func is not None and piece.color == self.color:
+                    self.history[-1].reward += self.sense_reward_func(piece)
 
     def handle_move_result(
         self, 
@@ -84,7 +111,17 @@ class RandomBot(Player):
         captured_opponent_piece: bool, 
         capture_square: t.Optional[Square]
     ):
-        pass
+        if captured_opponent_piece:
+            piece = self.board.remove_piece_at(capture_square)
+            if self.capture_reward_func is not None:
+                self.history[-1].reward += self.capture_reward_func(piece, lost=False)
+
+        if taken_move is not None:
+            self.board.push(taken_move)
+            self.board.turn = self.color
+        
+        if self.move_reward_func is not None:
+            self.history[-1].reward += self.move_reward_func(taken_move, requested_move)
 
     def handle_game_end(
         self, 
@@ -92,7 +129,38 @@ class RandomBot(Player):
         win_reason: t.Optional[WinReason],
         game_history: GameHistory
     ):
-        pass
+        if win_reason.KING_CAPTURE:
+            reward = 1 if winner_color == self.color else -1
+            self.history[-1].reward = reward
+
+
+class RandomBot(PlayerWithBoardHistory):
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def choose_sense(
+        self,
+        sense_actions: t.List[Square], 
+        move_actions: t.List[chess.Move], 
+        seconds_left: float
+    ) -> t.Optional[Square]:
+        sense = random.choice(sense_actions)
+        self.history.append(Transition(board_to_onehot(self.board), sense, reward=0))
+
+        return sense
+
+    def choose_move(
+        self, move_actions: t.List[chess.Move], seconds_left: float
+    ) -> t.Optional[chess.Move]:
+        # TODO: implement None action selection 
+        # move = random.choice(move_actions + [None])
+        move = random.choice(move_actions)
+        self.history.append(
+            Transition(board_to_onehot(self.board), move_to_index(move), reward=0)
+        )
+
+        return move
 
 
 STOCKFISH_ENV_VAR = 'STOCKFISH_EXECUTABLE'
@@ -217,15 +285,6 @@ class TroutBot(Player):
         except chess.engine.EngineTerminatedError:
             pass
 
-# Chess pieces values according to https://www.chess.com/terms/chess-piece-value
-PIECE_VALUE = {
-    chess.PAWN: 1/8,
-    chess.KNIGHT: 3/8,
-    chess.BISHOP: 3/8,
-    chess.ROOK: 5/8,
-    chess.QUEEN: 8/8,
-    chess.KING: 8/8,
-}
 
 class QAgent(Player):
 
@@ -318,6 +377,7 @@ class QAgent(Player):
     def choose_move(
         self, move_actions: t.List[chess.Move], seconds_left: float
     ) -> t.Optional[chess.Move]:
+        # TODO: allow for None move actions
         # Add latest state of observation to the NARX memory
         self.add_to_memory(board_to_onehot(self.board))
 
