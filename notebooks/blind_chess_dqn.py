@@ -108,18 +108,19 @@ def main():
     wandb.init(project="blind_chess", entity="not-working-solutions")
 
     narx_memory_length = 50
-    replay_size = 50000
-    batch_size = 64
-    n_hidden = 32
+    replay_size = 10000
+    batch_size = 512
+    n_hidden = 64
     n_steps = 10
     n_batches_per_step = 10
     n_games_per_step = 10
     n_test_games = 100
-    lr_start = 0.01
-    lr_end = 0.0001
-    loss_weights = (1e-5, 1., 1.)
+    lr_start = 0.1
+    lr_end = 0.001
+    loss_weights = (1e-7, 1., 1.)
     gamma = 1
     gradient_clip = 100
+    exp_decay_weight = 1.05
 
     q_nets = [
         TestQNet(narx_memory_length, n_hidden),
@@ -158,6 +159,7 @@ def main():
         for i_game in range(n_games_per_step):
             winner_color, win_reason, game_history = reconchess.play_local_game(agents[0], agents[1])
             # TODO: Implement return estimation as in Apex-DQN.
+            # TODO: Implement prioritized replay
             # TODO: Implement sampling of the colors.
 
             white_index = 0 if agents[0].color == chess.WHITE else 1
@@ -180,6 +182,18 @@ def main():
                 transition_white.action_opponent = transition_black.action
                 transition_black.action_opponent = transition_white_next.action
 
+            # TODO: think if we can use AlphaZero state value trick (overwrite all rewards with 1.)
+            # Reward shaping: propagate the final reward to the preceeding timesteps with exponential decay.
+            length = max(len(agent.history) for agent in agents)
+            for i in range(-1, -length -1, -1):
+                try:
+                    for agent in agents:
+                        agent.history[i-1].reward = agent.history[i].reward * (exp_decay_weight ** i)
+
+                # If we came to the end of the shortest history
+                except IndexError as e:
+                    continue
+
             replay_buffer.add(Transition.stack(agents[0].history))
             replay_buffer.add(Transition.stack(agents[1].history))
 
@@ -194,6 +208,8 @@ def main():
                 batch_obs_next,
                 batch_act_opponent,
              ) = map(convert_to_tensor, data)
+
+            rew_count = batch_rew.count_nonzero().item()
 
             # Compute opponnet loss
             # TODO: can we do single prop through network?
@@ -214,7 +230,8 @@ def main():
                 batch_rew,
                 batch_obs_next,
                 # TODO: implement explicit saving for `done`
-                torch.where(batch_rew != 0, 1., 0.)
+                torch.where(batch_rew != 0, 1., 0.),
+                discount=gamma
             )
 
             total_loss += loss_weights[1] * move_loss
@@ -238,7 +255,8 @@ def main():
                 batch_rew,
                 batch_obs_next,
                 # TODO: implement explicit saving for `done`
-                torch.where(batch_rew != 0, 1., 0.)
+                torch.where(batch_rew != 0, 1., 0.),
+                discount=gamma,
             )
 
             total_loss += loss_weights[2] * sense_loss
@@ -259,6 +277,7 @@ def main():
                 "move_loss": move_loss,
                 "sense_loss": sense_loss,
                 "opponent_act_loss": opponent_act_loss,
+                "samples_with_reward": rew_count,
             })
 
         print("Evaluation.")
