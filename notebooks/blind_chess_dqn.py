@@ -123,7 +123,7 @@ def main():
     gamma = 1
     gradient_clip = 100
 
-    # Set to 0. if don't want to propagate any reward.
+    # Set to 0. if don't want to propagate terminal reward.
     reward_decay_weight = 1.05
 
     q_nets = [
