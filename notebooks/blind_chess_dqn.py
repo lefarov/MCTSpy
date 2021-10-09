@@ -128,15 +128,20 @@ def main():
     wandb.init(project="blind_chess", entity="not-working-solutions")
 
     narx_memory_length = 50
-    replay_size = 10000
+    replay_size = 50000
     batch_size = 512
+    
     n_hidden = 64
-    n_steps = 10
+    n_steps = 5000
     n_batches_per_step = 10
     n_games_per_step = 10
     n_test_games = 100
+    
+    # Frequency for updating target Q network
+    target_q_update = 1
+
     # If you don't need learning rate annealing, set `le_end` equal to `lr_start`
-    lr_start = 0.01
+    lr_start = 0.001
     lr_end = 0.0001
     # Weights of opponent's move prediction, move td and sense td errors.
     loss_weights = (1e-7, 1., 1.)
@@ -175,13 +180,13 @@ def main():
     agents = [
         QAgent(
             net,
-            functools.partial(policy_sampler, eps=0.2),
+            functools.partial(policy_sampler, eps=eps),
             narx_memory_length,
             capture_proxy_reward,
             move_proxy_reward,
             sense_proxy_reward
         )
-        for net in q_nets
+        for net, eps in zip(q_nets, (0.2, 1.0))
     ]
     
     test_agent = QAgent(q_nets[0], functools.partial(policy_sampler, eps=0.0), narx_memory_length)
@@ -195,6 +200,7 @@ def main():
         print("Playing.")
         for i_game in range(n_games_per_step):
             winner_color, win_reason, game_history = reconchess.play_local_game(agents[0], agents[1])
+            # TODO: implement random agent that tracks the history
             # TODO: Implement return estimation as in Apex-DQN.
             # TODO: Implement prioritized replay
             # TODO: Implement sampling of the colors.
@@ -321,7 +327,9 @@ def main():
                 "sense_reward_fraction": sense_rew_count / batch_size,
             })
 
-        # TODO: clone the network.
+        # Clone target network with specified frequency
+        if i_step % target_q_update == 0:
+            q_net_target.load_state_dict(q_nets[0].state_dict())
 
         print("Evaluation.")
         win_rate = 0
@@ -334,12 +342,12 @@ def main():
 
         wandb.log({
             "win_rate": win_rate / n_test_games,
-            "annealed_lr": lr_scheduler.get_last_lr()[0],
+            # "annealed_lr": lr_scheduler.get_last_lr()[-1],
             "replay_is_full": int(replay_buffer.is_full),
         })
 
         # Update learning rate
-        lr_scheduler.step()
+        # lr_scheduler.step()
 
 
 if __name__ == '__main__':
