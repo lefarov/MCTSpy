@@ -281,7 +281,7 @@ def main():
                 "move_loss": move_loss,
                 "sense_loss": sense_loss,
                 "opponent_act_loss": opponent_act_loss,
-                "samples_with_reward": rew_count,
+                "samples_with_reward": rew_count / batch_size,
             })
 
         print("Evaluation.")
@@ -295,7 +295,8 @@ def main():
 
         wandb.log({
             "win_rate": win_rate / n_test_games,
-            "annealed_lr": lr_scheduler.get_lr(),
+            "annealed_lr": lr_scheduler.get_last_lr(),
+            "replay_if_full": replay_buffer.is_full,
         })
 
         # Update learning rate

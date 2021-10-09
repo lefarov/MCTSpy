@@ -33,6 +33,8 @@ class HistoryReplayBuffer:
 
         self.history_indices = deque()
 
+        self.is_full = False
+
     def add(self, history: Transition) -> None:
         length = len(history.reward)
         assert length <= self.size
@@ -54,6 +56,7 @@ class HistoryReplayBuffer:
             # enough free space till the end of the buffer. Thus we need to write
             # current history from the beginning of the buffer till the next record.
             if start == 0:
+                self.is_full = True
                 last_entry = 0
 
             # If indices deque is not empty, set the next entry pointer to the start
