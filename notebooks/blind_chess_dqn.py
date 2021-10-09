@@ -14,8 +14,28 @@ import reconchess
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from agents.blind_chess import TestQNet, QAgent, Transition, RandomBot
+from agents.blind_chess import TestQNet, QAgent, Transition, RandomBot, PIECE_VALUE
 from utilities.replay_buffer import HistoryReplayBuffer
+
+
+def move_proxy_reward(taken_move, requested_move):
+    # TODO Punish invalid move?
+    return 0.0
+
+
+def capture_proxy_reward(piece: chess.Piece, lost: bool, weight=0.5):
+    # If Opponent captured your piece.
+    if lost:
+        # Return negative piece value multiplied by the importance weight of sense action.
+        return - PIECE_VALUE[piece.piece_type] * weight
+    else:
+        # Return value of a Pawn, since we don't know which piece we've captured.
+        return PIECE_VALUE[chess.PAWN] * weight
+
+
+def sense_proxy_reward(piece: chess.Piece, weight=0.1):
+    # Return sensed piece value multiplied by the importance weight of sense action.
+    return PIECE_VALUE[piece.piece_type] * weight
 
 
 def policy_sampler(q_values: torch.Tensor, valid_action_indices, eps: float = 0.05) -> int:
@@ -116,15 +136,15 @@ def main():
     n_games_per_step = 10
     n_test_games = 100
     # If you don't need learning rate annealing, set `le_end` equal to `lr_start`
-    lr_start = 0.1
-    lr_end = 0.001
+    lr_start = 0.01
+    lr_end = 0.0001
     # Weights of opponent's move prediction, move td and sense td errors.
     loss_weights = (1e-7, 1., 1.)
     gamma = 1
     gradient_clip = 100
 
     # Set to 0. if don't want to propagate terminal reward.
-    reward_decay_weight = 1.05
+    reward_decay_factor = 0.0  # 1.05
 
     q_nets = [
         TestQNet(narx_memory_length, n_hidden),
@@ -144,13 +164,26 @@ def main():
     optimizer = Adam(q_nets[0].parameters(), lr=lr_start)
     lr_scheduler = CosineAnnealingLR(optimizer, n_steps, lr_end)
 
+    # Report the size of the netowrks
     for stack in (q_nets[0].conv_stack, q_nets[0].fc_stack, q_nets[0]):
         net_size = 0
         for param in stack.parameters():
             net_size += param.numel()
         print(f"Stack size: {net_size}")
 
-    agents = [QAgent(net, functools.partial(policy_sampler, eps=0.2), narx_memory_length) for net in q_nets]
+    # TODO: schedule exploration epsilon
+    agents = [
+        QAgent(
+            net,
+            functools.partial(policy_sampler, eps=0.2),
+            narx_memory_length,
+            capture_proxy_reward,
+            move_proxy_reward,
+            sense_proxy_reward
+        )
+        for net in q_nets
+    ]
+    
     test_agent = QAgent(q_nets[0], functools.partial(policy_sampler, eps=0.0), narx_memory_length)
     random_agent = RandomBot()
 
@@ -188,15 +221,16 @@ def main():
 
             # TODO: think if we can use AlphaZero state value trick (overwrite all rewards with 1.)
             # Reward shaping: propagate the final reward to the preceeding timesteps with exponential decay.
-            length = max(len(agent.history) for agent in agents)
-            for i in range(-1, -length -1, -1):
-                try:
-                    for agent in agents:
-                        agent.history[i-1].reward += agent.history[i].reward * (reward_decay_weight ** i)
+            if reward_decay_factor != 0.0:
+                length = max(len(agent.history) for agent in agents)
+                for i in range(-1, -length -1, -1):
+                    try:
+                        for agent in agents:
+                            agent.history[i-1].reward += agent.history[i].reward * (reward_decay_factor ** i)
 
-                # If we came to the end of the shortest history
-                except IndexError as e:
-                    continue
+                    # If we came to the end of the shortest history
+                    except IndexError as e:
+                        continue
 
             replay_buffer.add(Transition.stack(agents[0].history))
             replay_buffer.add(Transition.stack(agents[1].history))
@@ -213,7 +247,7 @@ def main():
                 batch_act_opponent,
              ) = map(convert_to_tensor, data)
 
-            rew_count = batch_rew.count_nonzero().item()
+            move_rew_count = batch_rew.count_nonzero().item()
 
             # Compute opponnet loss
             # TODO: can we do single prop through network?
@@ -250,6 +284,8 @@ def main():
                 _,
              ) = map(convert_to_tensor, data)
 
+            sense_rew_count = batch_rew.count_nonzero().item()
+
             # Compute Sense loss
             sense_loss = q_loss(
                 q_selector(q_nets[0], "sense"),
@@ -281,8 +317,11 @@ def main():
                 "move_loss": move_loss,
                 "sense_loss": sense_loss,
                 "opponent_act_loss": opponent_act_loss,
-                "samples_with_reward": rew_count / batch_size,
+                "move_reward_fraction": move_rew_count / batch_size,
+                "sense_reward_fraction": sense_rew_count / batch_size,
             })
+
+        # TODO: clone the network.
 
         print("Evaluation.")
         win_rate = 0
@@ -295,8 +334,8 @@ def main():
 
         wandb.log({
             "win_rate": win_rate / n_test_games,
-            "annealed_lr": lr_scheduler.get_last_lr(),
-            "replay_if_full": replay_buffer.is_full,
+            "annealed_lr": lr_scheduler.get_last_lr()[0],
+            "replay_is_full": int(replay_buffer.is_full),
         })
 
         # Update learning rate

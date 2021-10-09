@@ -217,10 +217,27 @@ class TroutBot(Player):
         except chess.engine.EngineTerminatedError:
             pass
 
+# Chess pieces values according to https://www.chess.com/terms/chess-piece-value
+PIECE_VALUE = {
+    chess.PAWN: 1/8,
+    chess.KNIGHT: 3/8,
+    chess.BISHOP: 3/8,
+    chess.ROOK: 5/8,
+    chess.QUEEN: 8/8,
+    chess.KING: 8/8,
+}
 
 class QAgent(Player):
 
-    def __init__(self, q_net, policy_sampler, narx_memory_length):
+    def __init__(
+        self,
+        q_net,
+        policy_sampler,
+        narx_memory_length,
+        capture_reward_func=None,
+        move_reward_func=None,
+        sense_reward_func=None,
+    ):
         self.board = None
         self.color = None
         self.nanrx_memory = None
@@ -230,6 +247,10 @@ class QAgent(Player):
         self.memory_length = narx_memory_length
 
         self.history = []  # type: t.List[Transition]
+
+        self.capture_reward_func = capture_reward_func
+        self.move_reward_func = move_reward_func
+        self.sense_reward_func = sense_reward_func
 
     def handle_game_start(
         self, color: Color, board: chess.Board, opponent_name: str
@@ -259,7 +280,9 @@ class QAgent(Player):
         self, captured_my_piece: bool, capture_square: t.Optional[Square]
     ):
         if captured_my_piece:
-            self.board.remove_piece_at(capture_square)
+            piece = self.board.remove_piece_at(capture_square)
+            if self.capture_reward_func is not None:
+                self.history[-1].reward += self.capture_reward_func(piece, lost=True)
 
     def choose_sense(
         self, 
@@ -273,7 +296,7 @@ class QAgent(Player):
         with torch.no_grad():
             # Compute state Value and Q-value for every sense action 
             q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32).unsqueeze(0)  # Add the batch dim.
-            state_v, sense_q, *_ = self.q_net(q_net_input)
+            _, sense_q, *_ = self.q_net(q_net_input)
 
             sense_index = self.policy_sampler(sense_q.squeeze(0), list(range(64)))
 
@@ -287,7 +310,10 @@ class QAgent(Player):
         # Add the pieces in the sense result to our board
         # TODO: Remove the pieces from their old locations (if known).
         for square, piece in sense_result:
-            self.board.set_piece_at(square, piece)
+            if piece is not None:
+                self.board.set_piece_at(square, piece)
+                if self.sense_reward_func is not None and piece.color == self.color:
+                    self.history[-1].reward += self.sense_reward_func(piece)
 
     def choose_move(
         self, move_actions: t.List[chess.Move], seconds_left: float
@@ -301,7 +327,7 @@ class QAgent(Player):
         with torch.no_grad():
             # Compute state Value and Q-value for every move action
             q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32).unsqueeze(0)  # Add the batch dim.
-            state_v, _, move_q, *_ = self.q_net(q_net_input)
+            _, _, move_q, *_ = self.q_net(q_net_input)
             
             move_index = self.policy_sampler(move_q.squeeze(0), moves_indices)
 
@@ -323,12 +349,17 @@ class QAgent(Player):
         captured_opponent_piece: bool, 
         capture_square: t.Optional[Square]
     ):
+        if captured_opponent_piece:
+            piece = self.board.remove_piece_at(capture_square)
+            if self.capture_reward_func is not None:
+                self.history[-1].reward += self.capture_reward_func(piece, lost=False)
+
         if taken_move is not None:
             self.board.push(taken_move)
             self.board.turn = self.color
-
-        # if captured_opponent_piece:
-        #     self.board.remove_piece_at(capture_square)
+        
+        if self.move_reward_func is not None:
+            self.history[-1].reward += self.move_reward_func(taken_move, requested_move)
 
     def handle_game_end(
         self, 
@@ -336,8 +367,9 @@ class QAgent(Player):
         win_reason: t.Optional[WinReason],
         game_history: GameHistory
     ):
-        reward = 1 if winner_color == self.color else -1
-        self.history[-1].reward = reward
+        if win_reason.KING_CAPTURE:
+            reward = 1 if winner_color == self.color else -1
+            self.history[-1].reward = reward
 
 
 class TestQNet(torch.nn.Module):
