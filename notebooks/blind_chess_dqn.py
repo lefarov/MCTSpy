@@ -115,8 +115,10 @@ def main():
     n_batches_per_step = 10
     n_games_per_step = 10
     n_test_games = 100
+    # If you don't need learning rate annealing, set `le_end` equal to `lr_start`
     lr_start = 0.1
     lr_end = 0.001
+    # Weights of opponent's move prediction, move td and sense td errors.
     loss_weights = (1e-7, 1., 1.)
     gamma = 1
     gradient_clip = 100
@@ -291,7 +293,10 @@ def main():
             if winner_color == chess.WHITE:
                 win_rate += 1
 
-        wandb.log({"win_rate": win_rate / n_test_games})
+        wandb.log({
+            "win_rate": win_rate / n_test_games,
+            "annealed_lr": lr_scheduler.get_lr(),
+        })
 
         # Update learning rate
         lr_scheduler.step()
