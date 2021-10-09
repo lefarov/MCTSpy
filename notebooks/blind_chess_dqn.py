@@ -120,7 +120,9 @@ def main():
     loss_weights = (1e-7, 1., 1.)
     gamma = 1
     gradient_clip = 100
-    exp_decay_weight = 1.05
+
+    # Set to 0. if don't want to propagate any reward.
+    reward_decay_weight = 1.05
 
     q_nets = [
         TestQNet(narx_memory_length, n_hidden),
@@ -188,7 +190,7 @@ def main():
             for i in range(-1, -length -1, -1):
                 try:
                     for agent in agents:
-                        agent.history[i-1].reward = agent.history[i].reward * (exp_decay_weight ** i)
+                        agent.history[i-1].reward += agent.history[i].reward * (reward_decay_weight ** i)
 
                 # If we came to the end of the shortest history
                 except IndexError as e:
