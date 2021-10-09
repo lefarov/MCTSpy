@@ -128,7 +128,7 @@ def main():
     wandb.init(project="blind_chess", entity="not-working-solutions")
 
     narx_memory_length = 50
-    replay_size = 50000
+    replay_size = 10000
     batch_size = 512
     
     n_hidden = 64
@@ -232,6 +232,8 @@ def main():
                 itertools.zip_longest, fillvalue=Transition(None, -1, None)
             )
 
+            # TODO: mirror the history
+
             # Iterate over 3 transitions windows: (1) with Move actions of the white player
             # (2) Move actions of the black player and (3) white Move actions shifted by one timestep forward.
             for transition_white, transition_black, transition_white_next in padded_zipper(
@@ -256,7 +258,7 @@ def main():
                         continue
 
             replay_buffer.add(Transition.stack(agents[0].history))
-            replay_buffer.add(Transition.stack(agents[1].history))
+            # replay_buffer.add(Transition.stack(agents[1].history))
 
         print("Training.")
         for i_batch in range(n_batches_per_step):
@@ -330,6 +332,7 @@ def main():
             optimizer.zero_grad()
             total_loss.backward()
             
+            # TODO: check the gradients and clip if needed
             # for _, param in q_nets[0].named_parameters():
             #     param.grad.data.clamp_(gradient_clip, gradient_clip)
 
