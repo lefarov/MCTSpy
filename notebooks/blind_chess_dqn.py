@@ -139,10 +139,10 @@ def main():
     n_steps = 5000
     n_batches_per_step = 10
     n_games_per_step = 1
-    n_test_games = 100
+    n_test_games = 11
     
     # Frequency for updating target Q network
-    target_q_update = 50
+    target_q_update = 500
 
     # If you don't need learning rate annealing, set `le_end` equal to `lr_start`
     lr_start = 0.01
