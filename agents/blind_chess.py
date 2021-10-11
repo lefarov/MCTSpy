@@ -5,8 +5,9 @@ import random
 
 import chess
 import chess.engine
-import typing as t
+import chess.svg
 import torch
+import typing as t
 import numpy as np
 from dataclasses import dataclass
 
@@ -65,7 +66,11 @@ class PlayerWithBoardHistory(Player):
     """ Player subclass that maintains board state and records its history."""
 
     def __init__(
-        self, capture_reward_func=None, move_reward_func=None, sense_reward_func=None
+        self,
+        capture_reward_func=None,
+        move_reward_func=None,
+        sense_reward_func=None,
+        root_plot_direcotry=None,
     ) -> None:
 
         self.board = None
@@ -75,7 +80,26 @@ class PlayerWithBoardHistory(Player):
         self.move_reward_func = move_reward_func
         self.sense_reward_func = sense_reward_func
 
+        self._root_plot_directory = root_plot_direcotry
+        self._plot_directory = None
+        self._plot_index = 0
+
         self.history = []  # type: t.List[Transition]
+
+    @property
+    def plot_directory(self):
+        """Plot directory for current game."""
+        return self._plot_directory
+
+    @plot_directory.setter
+    def plot_directory(self, directory):
+        if self._root_plot_directory is None:
+            raise ValueError(
+                "Cannot set plotting directory for the agent with None root plotting directory"
+            )
+
+        self._plot_directory = os.path.join(self._root_plot_directory, directory)
+        os.makedirs(self._plot_directory)
 
     def handle_game_start(
         self, color: Color, board: chess.Board, opponent_name: str
@@ -85,6 +109,8 @@ class PlayerWithBoardHistory(Player):
         self.color = color
 
         self.history = []
+
+        self.save_board_to_svg()
 
     def handle_opponent_move_result(
         self, captured_my_piece: bool, capture_square: t.Optional[Square]
@@ -123,6 +149,8 @@ class PlayerWithBoardHistory(Player):
         if self.move_reward_func is not None:
             self.history[-1].reward += self.move_reward_func(taken_move, requested_move)
 
+        self.save_board_to_svg(requested_move)
+
     def handle_game_end(
         self, 
         winner_color: t.Optional[Color], 
@@ -132,6 +160,18 @@ class PlayerWithBoardHistory(Player):
         if win_reason.KING_CAPTURE:
             reward = 1 if winner_color == self.color else -1
             self.history[-1].reward = reward
+
+    def save_board_to_svg(self, lastmove=None):
+        """Plot the board state with the last requested move."""
+
+        if self._root_plot_directory is not None:
+            svg_board = chess.svg.board(self.board, lastmove=lastmove)
+            svg_path = os.path.join(self.plot_directory, f"_{self._plot_index}.svg")
+
+            with open(svg_path, "w") as f:
+                f.write(svg_board)
+
+            self._plot_index += 1
 
 
 class RandomBot(PlayerWithBoardHistory):
@@ -403,9 +443,10 @@ class QAgent(Player):
         # Convert index of an action to chess Move
         move = index_to_move(move_index)
         if move not in move_actions:
-            move.promotion = chess.QUEEN
+            # move.promotion = chess.QUEEN
+            move = None
 
-        assert move in set(move_actions)
+        # assert move in set(move_actions)
 
         self.history.append(Transition(board_to_onehot(self.board), move_index, reward=0))
 

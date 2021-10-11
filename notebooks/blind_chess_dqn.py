@@ -1,5 +1,5 @@
 import functools
-import operator
+import os
 
 import torch
 import random
@@ -19,11 +19,18 @@ from utilities.replay_buffer import HistoryReplayBuffer
 
 
 def move_proxy_reward(taken_move, requested_move):
-    # TODO Punish invalid move?
+    # If invalid move was selected
+    if taken_move is None:
+        return -0.1
+
+    # If valid move was selected, but it was modified because of unknown opponent figure
+    if taken_move != requested_move:
+        return -0.01
+
     return 0.0
 
 
-def capture_proxy_reward(piece: chess.Piece, lost: bool, weight=0.5):
+def capture_proxy_reward(piece: chess.Piece, lost: bool, weight=0.2):
     # If Opponent captured your piece.
     if lost:
         # Return negative piece value multiplied by the importance weight of sense action.
@@ -38,10 +45,19 @@ def sense_proxy_reward(piece: chess.Piece, weight=0.1):
     return PIECE_VALUE[piece.piece_type] * weight
 
 
-def policy_sampler(q_values: torch.Tensor, valid_action_indices, eps: float = 0.05) -> int:
-    # TODO: Don't mask but punish illegal moves.
+def policy_sampler(
+    q_values: torch.Tensor,
+    valid_action_indices,
+    mask_invalid_actions=False,
+    eps: float = 0.05
+) -> int:
+    
     action_q_masked = torch.full_like(q_values, fill_value=torch.finfo(q_values.dtype).min)
     action_q_masked[valid_action_indices] = q_values[valid_action_indices]
+
+    # If we don't mask invalid actions, use original Q as masked values
+    if not mask_invalid_actions:
+        action_q_masked = q_values
 
     if random.random() >= eps:
         action_index = torch.argmax(action_q_masked).item()
@@ -126,7 +142,7 @@ def q_loss(
 def main():
 
     device = torch.device("cpu")
-    if torch.cuda.is_available():
+    if False and torch.cuda.is_available():
         device = torch.device("cuda")
 
     wandb.init(project="blind_chess", entity="not-working-solutions")
@@ -214,6 +230,13 @@ def main():
 
     random_agent = RandomBot(
         capture_proxy_reward, move_proxy_reward, sense_proxy_reward
+    )
+
+    test_opponent = RandomBot(
+        capture_proxy_reward,
+        move_proxy_reward,
+        sense_proxy_reward,
+        root_plot_direcotry=os.path.join(wandb.run.dir, "games"),
     )
 
     agents = [training_agent, random_agent]
@@ -362,9 +385,12 @@ def main():
         print("Evaluation.")
         win_rate = 0
         for i_test_game in range(n_test_games):
-            # TODO: plot the game and save to WNB
+            # TODO: save game plots to WANDB
+            # Set the plotting subdirectory for the current game
+            test_opponent.plot_directory = str(n_test_games * i_step + i_test_game)
+
             # TODO: Implement sampling of the colors.
-            winner_color, win_reason, game_history = reconchess.play_local_game(test_agent, random_agent)
+            winner_color, win_reason, game_history = reconchess.play_local_game(test_agent, test_opponent)
 
             if winner_color == chess.WHITE:
                 win_rate += 1
