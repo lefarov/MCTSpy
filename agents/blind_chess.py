@@ -420,7 +420,10 @@ class QAgent(PlayerWithBoardHistory):
         # Convert index of an action to chess Move
         move = index_to_move(move_index)
         if move not in move_actions:
-            move.promotion = chess.QUEEN
+            # TODO: what should we do with underpomotions
+            # move.promotion = chess.QUEEN
+            move = None
+
 
         # assert move in set(move_actions)
 

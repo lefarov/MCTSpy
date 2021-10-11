@@ -40,7 +40,7 @@ def capture_proxy_reward(piece: chess.Piece, lost: bool, weight=0.2):
         return PIECE_VALUE[chess.PAWN] * weight
 
 
-def sense_proxy_reward(piece: chess.Piece, weight=0.1):
+def sense_proxy_reward(piece: chess.Piece, weight=0.0):
     # Return sensed piece value multiplied by the importance weight of sense action.
     return PIECE_VALUE[piece.piece_type] * weight
 
@@ -48,7 +48,7 @@ def sense_proxy_reward(piece: chess.Piece, weight=0.1):
 def policy_sampler(
     q_values: torch.Tensor,
     valid_action_indices,
-    mask_invalid_actions=True,
+    mask_invalid_actions=False,
     eps: float = 0.05
 ) -> int:
     
@@ -213,6 +213,11 @@ def main():
     #     for net, eps in zip(q_nets, (0.2, 1.0))
     # ]
     
+    # TODO: check if this directory will be synced with the server.
+    game_plots_path = os.path.abspath(
+        os.path.join(wandb.run.dir, os.pardir, "games")
+    ) 
+
     training_agent = QAgent(
         q_nets[0],
         functools.partial(policy_sampler, eps=0.2),
@@ -228,7 +233,7 @@ def main():
         functools.partial(policy_sampler, eps=0.0),
         narx_memory_length,
         device,
-        root_plot_direcotry=os.path.join(wandb.run.dir, "games")
+        root_plot_direcotry=game_plots_path
     )
 
     random_agent = RandomBot(
@@ -239,7 +244,7 @@ def main():
         capture_proxy_reward,
         move_proxy_reward,
         sense_proxy_reward,
-        root_plot_direcotry=os.path.join(wandb.run.dir, "games"),
+        root_plot_direcotry=game_plots_path,
     )
 
     agents = [training_agent, random_agent]
