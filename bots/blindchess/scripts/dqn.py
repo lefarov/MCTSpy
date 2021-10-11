@@ -153,19 +153,19 @@ def main():
 
     narx_memory_length = 50
     replay_size = 10000
-    batch_size = 512
+    batch_size = 2048
     
     n_hidden = 64
     n_steps = 5000
     n_batches_per_step = 10
-    n_games_per_step = 1
+    n_games_per_step = 10
 
-    n_test_games = 128
-    evaluation_freq = 10
-    evaluation_batch_size = 32
+    n_test_games = 128 * 10
+    evaluation_freq = 100
+    evaluation_batch_size = 128
     
     # Frequency for updating target Q network
-    target_q_update = 20
+    target_q_update = 500
 
     # If you don't need learning rate annealing, set `le_end` equal to `lr_start`
     lr_start = 0.01
