@@ -106,6 +106,7 @@ class PlayerWithBoardHistory(Player):
     ):
         # Initialize board and color
         self.board = board
+        # TODO: insure correct color with context manager?
         self.board.turn = color
         self.color = color
 
@@ -125,6 +126,7 @@ class PlayerWithBoardHistory(Player):
     def handle_sense_result(
         self, sense_result: t.List[t.Tuple[Square, t.Optional[chess.Piece]]]
     ):
+        # TODO: Remove the pieces from their old locations (if known).
         for square, piece in sense_result:
             if piece is not None:
                 self.board.set_piece_at(square, piece)
@@ -161,6 +163,8 @@ class PlayerWithBoardHistory(Player):
         if win_reason.KING_CAPTURE:
             reward = 1 if winner_color == self.color else -1
             self.history[-1].reward = reward
+
+        self.save_board_to_svg()
 
     def save_board_to_svg(self, lastmove=None):
         """Plot the board state with the last requested move."""
@@ -327,7 +331,7 @@ class TroutBot(Player):
             pass
 
 
-class QAgent(Player):
+class QAgent(PlayerWithBoardHistory):
 
     def __init__(
         self,
@@ -335,39 +339,28 @@ class QAgent(Player):
         policy_sampler,
         narx_memory_length,
         device,
-        capture_reward_func=None,
-        move_reward_func=None,
-        sense_reward_func=None,
+        *args,
+        **kwargs,
     ):
-        self.board = None
-        self.color = None
+
+        super().__init__(*args, **kwargs)
+
+        self.memory_length = narx_memory_length
         self.nanrx_memory = None
 
-        self.device = device
-
         self.q_net = q_net
+        self.device = device
         self.policy_sampler = policy_sampler
-        self.memory_length = narx_memory_length
-
-        self.history = []  # type: t.List[Transition]
-
-        self.capture_reward_func = capture_reward_func
-        self.move_reward_func = move_reward_func
-        self.sense_reward_func = sense_reward_func
 
     def handle_game_start(
         self, color: Color, board: chess.Board, opponent_name: str
     ):
-        # Initialize board and color
-        self.board = board
-        self.color = color
+        super().handle_game_start(color, board, opponent_name)
         
         # Initialize NARX memory with the shape [L, 8, 8, 13],
         # where L is the memory lenght, 8x8 is the board dimensions
         # and 13 is the one-hot-encoded piece representation
         self.nanrx_memory = np.tile(board_to_onehot(self.board), (self.memory_length, 1, 1, 1))
-
-        self.history = []
 
     def add_to_memory(self, board_onehot):
         assert isinstance(board_onehot, np.ndarray)
@@ -378,14 +371,6 @@ class QAgent(Player):
         self.nanrx_memory = np.roll(self.nanrx_memory, 1, axis=0)
         # Overwrite the first observation
         self.nanrx_memory[0, :] = board_onehot
-        
-    def handle_opponent_move_result(
-        self, captured_my_piece: bool, capture_square: t.Optional[Square]
-    ):
-        if captured_my_piece:
-            piece = self.board.remove_piece_at(capture_square)
-            if self.capture_reward_func is not None:
-                self.history[-1].reward += self.capture_reward_func(piece, lost=True)
 
     def choose_sense(
         self, 
@@ -410,17 +395,6 @@ class QAgent(Player):
 
         return sense_actions[sense_index]
 
-    def handle_sense_result(
-        self, sense_result: t.List[t.Tuple[Square, t.Optional[chess.Piece]]]
-    ):
-        # Add the pieces in the sense result to our board
-        # TODO: Remove the pieces from their old locations (if known).
-        for square, piece in sense_result:
-            if piece is not None:
-                self.board.set_piece_at(square, piece)
-                if self.sense_reward_func is not None and piece.color == self.color:
-                    self.history[-1].reward += self.sense_reward_func(piece)
-
     def choose_move(
         self, move_actions: t.List[chess.Move], seconds_left: float
     ) -> t.Optional[chess.Move]:
@@ -444,44 +418,13 @@ class QAgent(Player):
         # Convert index of an action to chess Move
         move = index_to_move(move_index)
         if move not in move_actions:
-            # TODO: solve underpromotions
-            # move.promotion = chess.QUEEN
-            move = None
+            move.promotion = chess.QUEEN
 
         # assert move in set(move_actions)
 
         self.history.append(Transition(board_to_onehot(self.board), move_index, reward=0))
 
         return move
-
-    def handle_move_result(
-        self, 
-        requested_move: t.Optional[chess.Move], 
-        taken_move: t.Optional[chess.Move],
-        captured_opponent_piece: bool, 
-        capture_square: t.Optional[Square]
-    ):
-        if captured_opponent_piece:
-            piece = self.board.remove_piece_at(capture_square)
-            if self.capture_reward_func is not None:
-                self.history[-1].reward += self.capture_reward_func(piece, lost=False)
-
-        if taken_move is not None:
-            self.board.push(taken_move)
-            self.board.turn = self.color
-        
-        if self.move_reward_func is not None:
-            self.history[-1].reward += self.move_reward_func(taken_move, requested_move)
-
-    def handle_game_end(
-        self, 
-        winner_color: t.Optional[Color], 
-        win_reason: t.Optional[WinReason],
-        game_history: GameHistory
-    ):
-        if win_reason.KING_CAPTURE:
-            reward = 1 if winner_color == self.color else -1
-            self.history[-1].reward = reward
 
 
 class TestQNet(torch.nn.Module):

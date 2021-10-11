@@ -21,7 +21,7 @@ from utilities.replay_buffer import HistoryReplayBuffer
 def move_proxy_reward(taken_move, requested_move):
     # If invalid move was selected
     if taken_move is None:
-        return -0.1
+        return -0.5
 
     # If valid move was selected, but it was modified because of unknown opponent figure
     if taken_move != requested_move:
@@ -142,7 +142,7 @@ def q_loss(
 def main():
 
     device = torch.device("cpu")
-    if False and torch.cuda.is_available():
+    if torch.cuda.is_available():
         device = torch.device("cuda")
 
     wandb.init(project="blind_chess", entity="not-working-solutions")
@@ -155,7 +155,9 @@ def main():
     n_steps = 5000
     n_batches_per_step = 10
     n_games_per_step = 1
-    n_test_games = 11
+
+    n_test_games = 1
+    evaluation_freq = 10
     
     # Frequency for updating target Q network
     target_q_update = 500
@@ -226,6 +228,7 @@ def main():
         functools.partial(policy_sampler, eps=0.0),
         narx_memory_length,
         device,
+        root_plot_direcotry=os.path.join(wandb.run.dir, "games")
     )
 
     random_agent = RandomBot(
@@ -290,6 +293,9 @@ def main():
 
             replay_buffer.add(Transition.stack(agents[0].history))
             # replay_buffer.add(Transition.stack(agents[1].history))
+
+        # Report if our replay buffer is full
+        wandb.log({"replay_is_full": int(replay_buffer.is_full)})
 
         print("Training.")
         for i_batch in range(n_batches_per_step):
@@ -382,25 +388,24 @@ def main():
         if i_step % target_q_update == 0:
             q_net_target.load_state_dict(q_nets[0].state_dict())
 
-        print("Evaluation.")
-        win_rate = 0
-        for i_test_game in range(n_test_games):
-            # TODO: save game plots to WANDB
-            # Set the plotting subdirectory for the current game
-            test_tame_name = str(n_test_games * i_step + i_test_game)
-            test_opponent.plot_directory = f"opponent_{test_tame_name}"
+        # Evaluate our agent with greedy policy
+        if i_step % evaluation_freq == 0:
+            print("Evaluation.")
+            win_rate = 0
+            for i_test_game in range(n_test_games):
+                # TODO: save game plots to WANDB
+                # Set the plotting subdirectory for the current game
+                test_tame_name = str(n_test_games * i_step + i_test_game)
+                test_agent.plot_directory = f"agent_{test_tame_name}"
+                test_opponent.plot_directory = f"opponent_{test_tame_name}"
 
-            # TODO: Implement sampling of the colors.
-            winner_color, win_reason, game_history = reconchess.play_local_game(test_agent, test_opponent)
+                # TODO: Implement sampling of the colors.
+                winner_color, win_reason, game_history = reconchess.play_local_game(test_agent, test_opponent)
 
-            if winner_color == chess.WHITE:
-                win_rate += 1
+                if winner_color == chess.WHITE:
+                    win_rate += 1
 
-        wandb.log({
-            "win_rate": win_rate / n_test_games,
-            # "annealed_lr": lr_scheduler.get_last_lr()[-1],
-            "replay_is_full": int(replay_buffer.is_full),
-        })
+            wandb.log({"win_rate": win_rate / n_test_games})
 
         # Update learning rate
         # lr_scheduler.step()
