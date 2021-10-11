@@ -443,6 +443,7 @@ class QAgent(Player):
         # Convert index of an action to chess Move
         move = index_to_move(move_index)
         if move not in move_actions:
+            # TODO: solve underpromotions
             # move.promotion = chess.QUEEN
             move = None
 
