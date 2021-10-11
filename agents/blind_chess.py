@@ -106,6 +106,7 @@ class PlayerWithBoardHistory(Player):
     ):
         # Initialize board and color
         self.board = board
+        self.board.turn = color
         self.color = color
 
         self.history = []
