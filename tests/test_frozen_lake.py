@@ -8,7 +8,7 @@ from collections import defaultdict
 
 from mctspy.tree import DecisionNode, MCTS
 from mctspy.policies import uct_action
-from mctspy.simluator import SimulatorInterface
+from mctspy.simulator import SimulatorInterface
 
 
 class FrozenLakeMCTS(SimulatorInterface):

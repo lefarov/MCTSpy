@@ -24,7 +24,7 @@ from reconchess import (
     GameHistoryDecoder,
 )
 
-from simulations.blind_chess import (
+from reconchess_bot.simulator import (
     BlindChessMP,
     MPGameAction,
     fen_to_npboard,

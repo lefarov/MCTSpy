@@ -3,7 +3,7 @@ import typing as t
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mctspy.simluator import SimulatorInterface
+    from mctspy.simulator import SimulatorInterface
 
 from mctspy.tree import DecisionNode, POMCP, ChanceNode
 

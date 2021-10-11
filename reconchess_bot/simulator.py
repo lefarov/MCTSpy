@@ -15,7 +15,7 @@ from reconchess import (
     play_turn, WinReason,
 )
 
-from mctspy.simluator import SimulatorInterface
+from mctspy.simulator import SimulatorInterface
 
 
 def capture_reward(piece: chess.Piece, game: LocalGame):

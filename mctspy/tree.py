@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mctspy.simluator import SimulatorInterface, SimulatorInterfacePO
+    from mctspy.simulator import SimulatorInterface, SimulatorInterfacePO
 
 import random
 import typing as t

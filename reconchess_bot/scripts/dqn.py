@@ -17,9 +17,9 @@ import reconchess
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from agents.blind_chess import TestQNet, QAgent, Transition, RandomBot, PIECE_VALUE, QAgentBatched
-from utilities.play_blind_chess_batched import PlayerBatchedWrapper, play_local_game_batched
-from utilities.replay_buffer import HistoryReplayBuffer
+from reconchess_bot.agent import TestQNet, QAgent, Transition, RandomBot, PIECE_VALUE, QAgentBatched
+from reconchess_bot.play import PlayerBatchedWrapper, play_local_game_batched
+from reconchess_bot.utilities import HistoryReplayBuffer
 
 
 def move_proxy_reward(taken_move, requested_move):

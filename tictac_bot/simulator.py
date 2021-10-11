@@ -3,7 +3,7 @@ import typing as t
 from dataclasses import dataclass, field
 from enum import IntEnum
 
-from mctspy.simluator import SimulatorInterface
+from mctspy.simulator import SimulatorInterface
 
 
 class TicTacActionType(IntEnum):

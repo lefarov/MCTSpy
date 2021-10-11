@@ -18,7 +18,7 @@ from reconchess import (
     GameHistoryDecoder,
 )
 
-from simulations.blind_chess import (
+from reconchess_bot.simulator import (
     BlindChessMP, 
     MPGameAction, 
     fen_to_npboard, 
@@ -72,8 +72,8 @@ board_copy.move_stack = list(board_move_stack)
 
 #%% [markdown]
 # ## Step down manually through MCTS simulator for Blind Chess
-from simulations.blind_chess import BlindChessSP, capture_reward
-from agents.blind_chess import RandomBot, TroutBot
+from reconchess_bot.simulator import BlindChessSP, capture_reward
+from reconchess_bot.agent import RandomBot, TroutBot
 
 #%%
 opponent = RandomBot()

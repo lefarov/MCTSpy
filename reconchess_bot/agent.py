@@ -20,13 +20,13 @@ from reconchess import (
     WinReason,
 )
 
-from simulations.blind_chess import (
+from reconchess_bot.simulator import (
     board_to_onehot,
     index_to_move,
     move_to_index,
     PIECE_INDEX,
 )
-from utilities.play_blind_chess_batched import PlayerBatched
+from reconchess_bot.play import PlayerBatched
 
 
 @dataclass
