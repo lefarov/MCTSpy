@@ -160,7 +160,7 @@ def main():
     evaluation_freq = 10
     
     # Frequency for updating target Q network
-    target_q_update = 500
+    target_q_update = 20
 
     # If you don't need learning rate annealing, set `le_end` equal to `lr_start`
     lr_start = 0.01
@@ -171,7 +171,7 @@ def main():
     gradient_clip = 100
 
     # Set to 0. if don't want to propagate terminal reward.
-    reward_decay_factor = 0.0  # 1.05
+    reward_decay_factor = 1.05  # 1.05
 
     q_nets = [
         TestQNet(narx_memory_length, n_hidden).to(device),
