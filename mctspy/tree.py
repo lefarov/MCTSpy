@@ -20,14 +20,14 @@ class DecisionNode:
     observation: hashable
         Observation of a simulation's state. The state itself in case of Fully-observed MDP.
     visits: int
-        Total number of visits for Decision Node (i.e, sum of childrens' visits).
+        Total number of visits for Decision Node (i.e, sum of children's' visits).
     children: dict
         Dictionary for children Chance Nodes.
     agent_id: hashable
-        Id of the agent which has to take an action for multi-agent simullation (e.g. multiplayer game).
+        Id of the agent which has to take an action for multi-agent simulation (e.g. multiplayer game).
     belief_state: list
         List of probably true system states
-        (i.e. particles from [https://papers.nips.cc/paper/2010/file/edfbe1afcf9246bb0d40eb4d8027d90f-Paper.pdf]).
+        (i.e. particles from https://papers.nips.cc/paper/2010/file/edfbe1afcf9246bb0d40eb4d8027d90f-Paper.pdf).
     """
     observation: t.Hashable
     visits: int
@@ -50,11 +50,11 @@ class ChanceNode:
     reward: float
         Last observed reward for the state-action pair.
     value: float
-        Estiamte of a state-action pair value, i.e. Q(s, a) in RL notation.
+        Estimate of a state-action pair value, i.e. Q(s, a) in RL notation.
     children: dict
         Dictionary for children Decision Nodes.
     agent_id: hashable
-        Id of the agent who took the action for multi-agent simullation (e.g. multiplayer game).
+        Id of the agent who took the action for multi-agent simulation (e.g. multiplayer game).
     """
     action: t.Hashable
     visits: int
@@ -106,14 +106,14 @@ class MCTS:
         """ Expand the tree.
 
         Function traverses the Tree by iterating over the Decision Nodes 
-        until a Decision Node with at least one untried action or teminal 
+        until a Decision Node with at least one untried action or terminal 
         state is found. Provided action selection policy is used to select
         an action during the traverse.
         
         For the Decision Node with untried actions, one of those is sampled 
         uniformly. The state value estimator is then used to compute the value 
         of its successor state. For the Decision Node with terminal state the
-        final value is computed by simulator. The state value is then reuturned.
+        final value is computed by simulator. The state value is then returned.
 
         All Chance nodes are added to the stack, that is used for backing up 
         the rewards and the terimal value (actual or estimated).
@@ -123,7 +123,7 @@ class MCTS:
         node: DecisionNode
             Root Decision Node.
         simulator: MCTSSimulator
-            Simulator that follows the MCTS simulatio interface.
+            Simulator that follows the MCTS simulation interface.
         action_selection_policy: callable(DecisionNode) -> hashable
             Policy that computes the action to take for the given Decision Node
         state_value_estimator: callable(hashable) -> dict
@@ -180,13 +180,13 @@ class MCTS:
         Parameters
         ----------
         """
-        cummulative_rewards = defaultdict(int)
-        cummulative_rewards.update(terminal_value)
+        cumulative_rewards = defaultdict(int)
+        cumulative_rewards.update(terminal_value)
 
         while stack:
             current_node = stack.pop()
-            cummulative_rewards[current_node.agent_id] += current_node.reward
-            current_node.value += cummulative_rewards[current_node.agent_id]
+            cumulative_rewards[current_node.agent_id] += current_node.reward
+            current_node.value += cumulative_rewards[current_node.agent_id]
 
 
 class POMCP:
@@ -307,11 +307,11 @@ class POMCP:
         Parameters
         ----------
         """
-        cummulative_rewards = defaultdict(int)
-        cummulative_rewards.update(terminal_value)
+        cumulative_rewards = defaultdict(int)
+        cumulative_rewards.update(terminal_value)
 
         while stack:
             current_node = stack.pop()
-            cummulative_rewards[current_node.agent_id] += current_node.reward
-            current_node.value += cummulative_rewards[current_node.agent_id]
+            cumulative_rewards[current_node.agent_id] += current_node.reward
+            current_node.value += cumulative_rewards[current_node.agent_id]
     

@@ -18,7 +18,7 @@ def random_rollout_value(state, seed: int, env: SimulatorInterface):
     """ Rollout the environment till terminal state with random actions.
     """
     random.seed(seed)
-    cummulative_reward = defaultdict(int)
+    cumulative_reward = defaultdict(int)
 
     while not env.state_is_terminal(state):
         agent_id = env.get_current_agent(state)
@@ -26,13 +26,13 @@ def random_rollout_value(state, seed: int, env: SimulatorInterface):
             state, 
             random.choice(tuple(env.enumerate_actions(state)))
         )
-        cummulative_reward[agent_id] += reward
+        cumulative_reward[agent_id] += reward
 
     terminal_value = env.get_terminal_value(state)
     for agent, value in terminal_value.items():
-        cummulative_reward[agent] += value
+        cumulative_reward[agent] += value
 
-    return cummulative_reward
+    return cumulative_reward
 
 
 def pull_children_belief_state(node: DecisionNode, agent_id: int, last_observation: t.Hashable):
