@@ -4,6 +4,9 @@ import os
 import torch
 import random
 import itertools
+
+from reconchess import WinReason
+
 import wandb
 import typing as t
 import numpy as np
@@ -14,7 +17,8 @@ import reconchess
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from agents.blind_chess import TestQNet, QAgent, Transition, RandomBot, PIECE_VALUE
+from agents.blind_chess import TestQNet, QAgent, Transition, RandomBot, PIECE_VALUE, QAgentBatched
+from utilities.play_blind_chess_batched import PlayerBatchedWrapper, play_local_game_batched
 from utilities.replay_buffer import HistoryReplayBuffer
 
 
@@ -156,8 +160,9 @@ def main():
     n_batches_per_step = 10
     n_games_per_step = 1
 
-    n_test_games = 1
+    n_test_games = 128
     evaluation_freq = 10
+    evaluation_batch_size = 32
     
     # Frequency for updating target Q network
     target_q_update = 20
@@ -233,18 +238,29 @@ def main():
         functools.partial(policy_sampler, eps=0.0),
         narx_memory_length,
         device,
-        root_plot_direcotry=game_plots_path
+        root_plot_directory=game_plots_path
     )
 
     random_agent = RandomBot(
         capture_proxy_reward, move_proxy_reward, sense_proxy_reward
     )
 
+    test_agent_batched = QAgentBatched(
+        evaluation_batch_size,
+        q_nets[0],
+        functools.partial(policy_sampler, eps=0.0),
+        narx_memory_length,
+        device
+    )
+
+    random_bot_ctor = lambda: RandomBot(capture_proxy_reward, move_proxy_reward, sense_proxy_reward)
+    random_agent_batched = PlayerBatchedWrapper(evaluation_batch_size, random_bot_ctor)
+
     test_opponent = RandomBot(
         capture_proxy_reward,
         move_proxy_reward,
         sense_proxy_reward,
-        root_plot_direcotry=game_plots_path,
+        root_plot_directory=game_plots_path,
     )
 
     agents = [training_agent, random_agent]
@@ -395,18 +411,20 @@ def main():
         if i_step % evaluation_freq == 0:
             print("Evaluation.")
             win_rate = 0
-            for i_test_game in range(n_test_games):
+            for i_test_batch in range(n_test_games // evaluation_batch_size):
                 # TODO: save game plots to WANDB
                 # Set the plotting subdirectory for the current game
-                test_tame_name = str(n_test_games * i_step + i_test_game)
-                test_agent.plot_directory = f"agent_{test_tame_name}"
-                test_opponent.plot_directory = f"opponent_{test_tame_name}"
+                # test_tame_name = str(n_test_games * i_step + i_test_game)
+                # test_agent.plot_directory = f"agent_{test_tame_name}"
+                # test_opponent.plot_directory = f"opponent_{test_tame_name}"
 
                 # TODO: Implement sampling of the colors.
-                winner_color, win_reason, game_history = reconchess.play_local_game(test_agent, test_opponent)
+                # winner_color, win_reason, game_history = reconchess.play_local_game(test_agent, test_opponent)
+                results = play_local_game_batched(test_agent_batched, random_agent_batched, evaluation_batch_size)
 
-                if winner_color == chess.WHITE:
-                    win_rate += 1
+                for winner_color, win_reason, game_history in results:
+                    if winner_color == chess.WHITE and win_reason == WinReason.KING_CAPTURE:
+                        win_rate += 1
 
             wandb.log({"win_rate": win_rate / n_test_games})
 

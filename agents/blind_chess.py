@@ -2,6 +2,7 @@ import functools
 import operator
 import os
 import random
+from typing import List, Optional
 
 import chess
 import chess.engine
@@ -25,6 +26,7 @@ from simulations.blind_chess import (
     move_to_index,
     PIECE_INDEX,
 )
+from utilities.play_blind_chess_batched import PlayerBatched
 
 
 @dataclass
@@ -72,7 +74,7 @@ class PlayerWithBoardHistory(Player):
         capture_reward_func=None,
         move_reward_func=None,
         sense_reward_func=None,
-        root_plot_direcotry=None,
+        root_plot_directory=None,
     ) -> None:
 
         self.board = None
@@ -82,7 +84,7 @@ class PlayerWithBoardHistory(Player):
         self.move_reward_func = move_reward_func
         self.sense_reward_func = sense_reward_func
 
-        self._root_plot_directory = root_plot_direcotry
+        self._root_plot_directory = root_plot_directory
         self._plot_directory = None
         self._plot_index = 0
 
@@ -164,10 +166,14 @@ class PlayerWithBoardHistory(Player):
         win_reason: t.Optional[WinReason],
         game_history: GameHistory
     ):
-        if win_reason.KING_CAPTURE:
+        if win_reason == WinReason.KING_CAPTURE:
             reward = 1 if winner_color == self.color else -1
-            self.history[-1].reward = reward
-            self.history[-1].done = 1.0
+        elif win_reason == WinReason.RESIGN:
+            # Currently, we only resign when going over the move limit. Both players take a penalty.
+            reward = -1
+
+        self.history[-1].reward = reward
+        self.history[-1].done = 1.0
 
         self.save_board_to_svg()
 
@@ -527,3 +533,88 @@ class TestQNet(torch.nn.Module):
         opponent_move = torch.nn.functional.relu(self.fc_opponent_move(x))
 
         return state_val, sense_q, move_q, opponent_move
+
+
+class QAgentBatched(PlayerBatched):
+
+    def __init__(
+        self,
+        batch_size,
+        q_net,
+        policy_sampler,
+        narx_memory_length,
+        device,
+        *args,
+        **kwargs,
+    ):
+
+        self.batch_size = batch_size
+        self.q_net = q_net
+        self.policy_sampler = policy_sampler
+        self.device = device
+
+        self.subplayers = []
+        for _ in range(batch_size):
+            self.subplayers.append(
+                QAgent(
+                    q_net,
+                    policy_sampler,
+                    narx_memory_length,
+                    device,
+                    *args,
+                    **kwargs,
+                )
+            )
+
+    def get_subplayer(self, game_index: int) -> QAgent:
+        return self.subplayers[game_index]
+
+    def choose_move_batched(self, subplayer_indices: List[int],
+                            move_actions_batch: List[List[chess.Move]]) -> Optional[List[chess.Move]]:
+        # TODO: allow for None move actions
+        # Add latest state of observation to the NARX memory
+
+        narx_memory_batch = torch.empty((len(subplayer_indices), *self.get_subplayer(0).nanrx_memory.shape),
+                                        dtype=torch.float32, device=self.device)
+
+        for i, (i_subplayer, move_actions) in enumerate(zip(subplayer_indices, move_actions_batch)):
+            subplayer = self.get_subplayer(i_subplayer)
+            subplayer.add_to_memory(board_to_onehot(subplayer.board))
+            narx_memory_batch[i, ...] = torch.as_tensor(subplayer.nanrx_memory,
+                                                        dtype=narx_memory_batch.dtype, device=self.device)
+
+        with torch.no_grad():
+            # Compute state Value and Q-value for every move action
+            _, _, move_q_batch, *_ = self.q_net(narx_memory_batch)
+
+        move_batch = []
+        for i, (i_subplayer, move_actions) in enumerate(zip(subplayer_indices, move_actions_batch)):
+            subplayer = self.get_subplayer(i_subplayer)
+            # Transform chess Moves into their indices in action Space
+            moves_indices = list(map(move_to_index, move_actions))
+            move_index = self.policy_sampler(move_q_batch[i], moves_indices)
+
+            # Convert index of an action to chess Move
+            move = index_to_move(move_index)
+            if move not in move_actions:
+                # TODO: what should we do with under-promotions
+                # move.promotion = chess.QUEEN
+                move = None
+
+            # assert move in set(move_actions)
+
+            subplayer.history.append(Transition(board_to_onehot(subplayer.board), move_index, reward=0))
+
+            move_batch.append(move)
+
+        return move_batch
+
+    def choose_sense_batched(self, subplayer_indices: List[int],
+                             sense_actions: List[List[Square]], move_actions: List[List[chess.Move]]) -> \
+            List[Optional[Square]]:
+
+        results = []
+        for i, (i_subplayer, s, m) in enumerate(zip(subplayer_indices, sense_actions, move_actions)):
+            results.append(self.get_subplayer(i_subplayer).choose_sense(s, m, 666))
+
+        return results
