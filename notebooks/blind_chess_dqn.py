@@ -387,7 +387,8 @@ def main():
         for i_test_game in range(n_test_games):
             # TODO: save game plots to WANDB
             # Set the plotting subdirectory for the current game
-            test_opponent.plot_directory = str(n_test_games * i_step + i_test_game)
+            test_tame_name = str(n_test_games * i_step + i_test_game)
+            test_opponent.plot_directory = f"opponent_{test_tame_name}"
 
             # TODO: Implement sampling of the colors.
             winner_color, win_reason, game_history = reconchess.play_local_game(test_agent, test_opponent)
