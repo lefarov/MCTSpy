@@ -101,6 +101,8 @@ class PlayerWithBoardHistory(Player):
         self._plot_directory = os.path.join(self._root_plot_directory, directory)
         os.makedirs(self._plot_directory)
 
+        self._plot_index = 0
+
     def handle_game_start(
         self, color: Color, board: chess.Board, opponent_name: str
     ):
