@@ -1,5 +1,6 @@
 import functools
 import os
+import time
 
 import torch
 import random
@@ -18,7 +19,7 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from bots.blindchess.agent import TestQNet, QAgent, Transition, RandomBot, PIECE_VALUE, QAgentBatched
-from bots.blindchess.play import PlayerBatchedWrapper, play_local_game_batched
+from bots.blindchess.play import BatchedAgentManagerSimple, play_local_game_batched
 from bots.blindchess.utilities import HistoryReplayBuffer
 
 
@@ -145,11 +146,7 @@ def q_loss(
 
 def main():
 
-    device = torch.device("cpu")
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-
-    wandb.init(project="blind_chess", entity="not-working-solutions")
+    use_wandb = False
 
     narx_memory_length = 50
     replay_size = 10000
@@ -178,12 +175,20 @@ def main():
     # Set to 0. if don't want to propagate terminal reward.
     reward_decay_factor = 1.05  # 1.05
 
+    device = torch.device("cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+
+    if use_wandb:
+        wandb.init(project="blind_chess", entity="not-working-solutions")
+
     q_nets = [
         TestQNet(narx_memory_length, n_hidden).to(device),
         TestQNet(narx_memory_length, n_hidden).to(device),
     ]
 
-    wandb.watch(q_nets[0])
+    if use_wandb:
+        wandb.watch(q_nets[0])
 
     convert_to_tensor_on_device = functools.partial(convert_to_tensor, device=device)
 
@@ -220,7 +225,7 @@ def main():
     
     # TODO: check if this directory will be synced with the server.
     game_plots_path = os.path.abspath(
-        os.path.join(wandb.run.dir, os.pardir, "games")
+        os.path.join(wandb.run.dir if use_wandb else os.path.join(os.getcwd(), 'wandb'), os.pardir, "games")
     ) 
 
     training_agent = QAgent(
@@ -246,7 +251,6 @@ def main():
     )
 
     test_agent_batched = QAgentBatched(
-        evaluation_batch_size,
         q_nets[0],
         functools.partial(policy_sampler, eps=0.0),
         narx_memory_length,
@@ -254,14 +258,7 @@ def main():
     )
 
     random_bot_ctor = lambda: RandomBot(capture_proxy_reward, move_proxy_reward, sense_proxy_reward)
-    random_agent_batched = PlayerBatchedWrapper(evaluation_batch_size, random_bot_ctor)
-
-    test_opponent = RandomBot(
-        capture_proxy_reward,
-        move_proxy_reward,
-        sense_proxy_reward,
-        root_plot_directory=game_plots_path,
-    )
+    random_agent_batched = BatchedAgentManagerSimple(random_bot_ctor)
 
     agents = [training_agent, random_agent]
 
@@ -316,7 +313,8 @@ def main():
             # replay_buffer.add(Transition.stack(agents[1].history))
 
         # Report if our replay buffer is full
-        wandb.log({"replay_is_full": int(replay_buffer.is_full)})
+        if use_wandb:
+            wandb.log({"replay_is_full": int(replay_buffer.is_full)})
 
         print("Training.")
         for i_batch in range(n_batches_per_step):
@@ -395,13 +393,14 @@ def main():
 
             optimizer.step()
 
-            wandb.log({
-                "total_loss": total_loss,
-                "move_loss": move_loss,
-                "sense_loss": sense_loss,
-                "opponent_act_loss": opponent_act_loss,
-                "terminal_fraction": terminal_count / batch_size,
-            })
+            if use_wandb:
+                wandb.log({
+                    "total_loss": total_loss,
+                    "move_loss": move_loss,
+                    "sense_loss": sense_loss,
+                    "opponent_act_loss": opponent_act_loss,
+                    "terminal_fraction": terminal_count / batch_size,
+                })
 
         # Clone target network with specified frequency
         if i_step % target_q_update == 0:
@@ -410,23 +409,27 @@ def main():
         # Evaluate our agent with greedy policy
         if i_step % evaluation_freq == 0:
             print("Evaluation.")
+            time_before = time.time()
+            # TODO: save game plots to WANDB
+            # Set the plotting subdirectory for the current game
+            # test_tame_name = str(n_test_games * i_step + i_test_game)
+            # test_agent.plot_directory = f"agent_{test_tame_name}"
+            # test_opponent.plot_directory = f"opponent_{test_tame_name}"
+
+            # TODO: Implement sampling of the colors.
+            # winner_color, win_reason, game_history = reconchess.play_local_game(test_agent, test_opponent)
+            results = play_local_game_batched(test_agent_batched, random_agent_batched,
+                                              total_number=n_test_games, batch_size=evaluation_batch_size)
+
+            print(f"Evaluation finished in {time.time() - time_before:.2f} s.")
+
             win_rate = 0
-            for i_test_batch in range(n_test_games // evaluation_batch_size):
-                # TODO: save game plots to WANDB
-                # Set the plotting subdirectory for the current game
-                # test_tame_name = str(n_test_games * i_step + i_test_game)
-                # test_agent.plot_directory = f"agent_{test_tame_name}"
-                # test_opponent.plot_directory = f"opponent_{test_tame_name}"
+            for winner_color, win_reason, game_history in results:
+                if winner_color == chess.WHITE and win_reason == WinReason.KING_CAPTURE:
+                    win_rate += 1
 
-                # TODO: Implement sampling of the colors.
-                # winner_color, win_reason, game_history = reconchess.play_local_game(test_agent, test_opponent)
-                results = play_local_game_batched(test_agent_batched, random_agent_batched, evaluation_batch_size)
-
-                for winner_color, win_reason, game_history in results:
-                    if winner_color == chess.WHITE and win_reason == WinReason.KING_CAPTURE:
-                        win_rate += 1
-
-            wandb.log({"win_rate": win_rate / n_test_games})
+            if use_wandb:
+                wandb.log({"win_rate": win_rate / n_test_games})
 
         # Update learning rate
         # lr_scheduler.step()

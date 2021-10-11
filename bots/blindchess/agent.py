@@ -26,7 +26,7 @@ from bots.blindchess.simulator import (
     move_to_index,
     PIECE_INDEX,
 )
-from bots.blindchess.play import PlayerBatched
+from bots.blindchess.play import BatchedAgentManager
 
 
 @dataclass
@@ -535,86 +535,89 @@ class TestQNet(torch.nn.Module):
         return state_val, sense_q, move_q, opponent_move
 
 
-class QAgentBatched(PlayerBatched):
+class QAgentBatched(BatchedAgentManager):
 
     def __init__(
         self,
-        batch_size,
         q_net,
         policy_sampler,
         narx_memory_length,
-        device,
-        *args,
-        **kwargs,
+        device
     ):
 
-        self.batch_size = batch_size
         self.q_net = q_net
         self.policy_sampler = policy_sampler
+        self.narx_memory_length = narx_memory_length
         self.device = device
 
-        self.subplayers = []
-        for _ in range(batch_size):
-            self.subplayers.append(
-                QAgent(
-                    q_net,
-                    policy_sampler,
-                    narx_memory_length,
-                    device,
-                    *args,
-                    **kwargs,
-                )
-            )
+    def build_agent(self) -> QAgent:
+        return QAgent(
+            self.q_net,
+            self.policy_sampler,
+            self.narx_memory_length,
+            self.device
+        )
 
-    def get_subplayer(self, game_index: int) -> QAgent:
-        return self.subplayers[game_index]
+    def choose_move_batched(self,
+                            agents: List[QAgent],
+                            move_action_lists: List[List[chess.Move]]) -> Optional[List[chess.Move]]:
 
-    def choose_move_batched(self, subplayer_indices: List[int],
-                            move_actions_batch: List[List[chess.Move]]) -> Optional[List[chess.Move]]:
-        # TODO: allow for None move actions
-        # Add latest state of observation to the NARX memory
-
-        narx_memory_batch = torch.empty((len(subplayer_indices), *self.get_subplayer(0).nanrx_memory.shape),
-                                        dtype=torch.float32, device=self.device)
-
-        for i, (i_subplayer, move_actions) in enumerate(zip(subplayer_indices, move_actions_batch)):
-            subplayer = self.get_subplayer(i_subplayer)
-            subplayer.add_to_memory(board_to_onehot(subplayer.board))
-            narx_memory_batch[i, ...] = torch.as_tensor(subplayer.nanrx_memory,
-                                                        dtype=narx_memory_batch.dtype, device=self.device)
+        narx_memory_batch = self._build_narx_batch(agents)
 
         with torch.no_grad():
             # Compute state Value and Q-value for every move action
             _, _, move_q_batch, *_ = self.q_net(narx_memory_batch)
 
         move_batch = []
-        for i, (i_subplayer, move_actions) in enumerate(zip(subplayer_indices, move_actions_batch)):
-            subplayer = self.get_subplayer(i_subplayer)
+        for agent, moves, move_q in zip(agents, move_action_lists, move_q_batch):
+
             # Transform chess Moves into their indices in action Space
-            moves_indices = list(map(move_to_index, move_actions))
-            move_index = self.policy_sampler(move_q_batch[i], moves_indices)
+            moves_indices = list(map(move_to_index, moves))
+            move_index = self.policy_sampler(move_q, moves_indices)
 
             # Convert index of an action to chess Move
             move = index_to_move(move_index)
-            if move not in move_actions:
+            if move not in move_action_lists:
                 # TODO: what should we do with under-promotions
                 # move.promotion = chess.QUEEN
                 move = None
 
             # assert move in set(move_actions)
 
-            subplayer.history.append(Transition(board_to_onehot(subplayer.board), move_index, reward=0))
+            agent.history.append(Transition(board_to_onehot(agent.board), move_index, reward=0))
 
             move_batch.append(move)
 
         return move_batch
 
-    def choose_sense_batched(self, subplayer_indices: List[int],
-                             sense_actions: List[List[Square]], move_actions: List[List[chess.Move]]) -> \
-            List[Optional[Square]]:
+    def choose_sense_batched(self, agents: List[QAgent],
+                             sense_action_lists: List[List[Square]],
+                             move_action_lists: List[List[chess.Move]]) -> List[Optional[Square]]:
 
-        results = []
-        for i, (i_subplayer, s, m) in enumerate(zip(subplayer_indices, sense_actions, move_actions)):
-            results.append(self.get_subplayer(i_subplayer).choose_sense(s, m, 666))
+        narx_memory_batch = self._build_narx_batch(agents)
 
-        return results
+        with torch.no_grad():
+            # Compute state Value and Q-value for every sense action
+            _, sense_q_batch, *_ = self.q_net(narx_memory_batch)
+
+        sense_batch = []
+        for agent, senses, sense_q in zip(agents, sense_action_lists, sense_q_batch):
+            sense_index = agent.policy_sampler(sense_q, list(range(64)))
+
+            agent.history.append(Transition(board_to_onehot(agent.board), sense_index, reward=0))
+
+            sense_batch.append(senses[sense_index])
+
+        return sense_batch
+
+    def _build_narx_batch(self, agents):
+        # TODO: allow for None move actions
+        # Add latest state of observation to the NARX memory
+        narx_memory_batch = torch.empty((len(agents), *agents[0].nanrx_memory.shape),
+                                        dtype=torch.float32, device=self.device)
+
+        for i, agent in enumerate(agents):
+            agent.add_to_memory(board_to_onehot(agent.board))
+            narx_memory_batch[i, ...] = torch.as_tensor(agent.nanrx_memory,
+                                                        dtype=narx_memory_batch.dtype, device=self.device)
+        return narx_memory_batch

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import *
 from abc import abstractmethod
 
@@ -8,124 +9,160 @@ from reconchess.game import Game, LocalGame, RemoteGame
 from reconchess.history import GameHistory
 
 
-class PlayerBatched:
+BatchedAgent = Player
+MatchResult = Tuple[Optional[Color], Optional[WinReason], GameHistory]
+
+
+class BatchedAgentManager:
 
     @abstractmethod
-    def get_subplayer(self, game_index: int) -> Player:
+    def build_agent(self) -> BatchedAgent:
         pass
 
     @abstractmethod
-    def choose_move_batched(self, subplayer_indices: List[int], move_actions: List[List[chess.Move]]) -> Optional[List[chess.Move]]:
+    def choose_move_batched(self,
+                            agents: List[BatchedAgent],
+                            move_action_lists: List[List[chess.Move]]) -> Optional[List[chess.Move]]:
         pass
 
     @abstractmethod
-    def choose_sense_batched(self, subplayer_indices: List[int], sense_actions: List[List[Square]], move_actions: List[List[chess.Move]]) -> \
-            List[Optional[Square]]:
+    def choose_sense_batched(self,
+                             agents: List[BatchedAgent],
+                             sense_actions: List[List[Square]],
+                             move_action_lists: List[List[chess.Move]]) -> List[Optional[Square]]:
         pass
 
 
-class PlayerBatchedWrapper(PlayerBatched):
+class BatchedAgentManagerSimple(BatchedAgentManager):
 
-    def __init__(self, batch_size: int, player_ctor: Callable[[], Player]):
-        self.subplayers = [player_ctor() for _ in range(batch_size)]
+    def __init__(self, player_ctor: Callable[[], Player]):
+        self.player_ctor = player_ctor
 
-    def get_subplayer(self, game_index: int) -> Player:
-        return self.subplayers[game_index]
+    def build_agent(self) -> BatchedAgent:
+        return self.player_ctor()
 
-    def choose_move_batched(self, subplayer_indices: List[int],
-                            move_actions: List[List[chess.Move]]) -> Optional[List[chess.Move]]:
-        return [self.subplayers[i_subplayer].choose_move(move_actions[i], 666)
-                for i, i_subplayer in enumerate(subplayer_indices)]
+    def choose_move_batched(self,
+                            agents: List[BatchedAgent],
+                            move_action_lists: List[List[chess.Move]]) -> Optional[List[chess.Move]]:
 
-    def choose_sense_batched(self, subplayer_indices: List[int],
-                             sense_actions: List[List[Square]], move_actions: List[List[chess.Move]]) -> \
-            List[Optional[Square]]:
-        return [self.subplayers[i_subplayer].choose_sense(sense_actions[i], move_actions[i], 666)
-                for i, i_subplayer in enumerate(subplayer_indices)]
+        return [a.choose_move(moves, 666) for a, moves in zip(agents, move_action_lists)]
 
+    def choose_sense_batched(self,
+                             agents: List[BatchedAgent],
+                             sense_actions: List[List[Square]],
+                             move_action_lists: List[List[chess.Move]]) -> List[Optional[Square]]:
 
-def play_local_game_batched(white_player: PlayerBatched, black_player: PlayerBatched, game_number: int = 32,
-                            move_limit: int = 100, seconds_per_player: float = 900) -> List[Tuple[Optional[Color], Optional[WinReason], GameHistory]]:
-
-    players = [black_player, white_player]
-
-    games = [LocalGame(seconds_per_player=seconds_per_player) for _ in range(game_number)]
-
-    for i, game in enumerate(games):
-        white_name = white_player.__class__.__name__
-        black_name = black_player.__class__.__name__
-        game.store_players(white_name, black_name)
-
-        white_player.get_subplayer(i).handle_game_start(chess.WHITE, game.board.copy(), black_name)
-        black_player.get_subplayer(i).handle_game_start(chess.BLACK, game.board.copy(), white_name)
-        game.start()
-
-    move_count = 0
-    while True:
-        games_not_over_indices = [i for i, game in enumerate(games) if not game.is_over()]
-        assert all(games[i].turn == games[games_not_over_indices[0]].turn for i in games_not_over_indices)
-
-        if not games_not_over_indices:
-            break
-        if move_count > move_limit:
-            for game in games:
-                if not game.is_over():
-                    game.resign()
-            break
-
-        play_turn_batched(games, games_not_over_indices, players[games[0].turn], end_turn_last=True)
-        move_count += 1
-
-    results = []
-    for i, game in enumerate(games):
-        game.end()
-        winner_color = game.get_winner_color()
-        win_reason = game.get_win_reason()
-        game_history = game.get_game_history()
-
-        white_player.get_subplayer(i).handle_game_end(winner_color, win_reason, game_history)
-        black_player.get_subplayer(i).handle_game_end(winner_color, win_reason, game_history)
-
-        results.append((winner_color, win_reason, game_history))
-
-    return results
+        return [a.choose_sense(senses, moves, 666)
+                for a, senses, moves in zip(agents, sense_actions, move_action_lists)]
 
 
-def play_turn_batched(games: List[Game], games_not_over_indices: List[int], player: PlayerBatched, end_turn_last=False):
+@dataclass
+class MatchInProgress:
+    game: LocalGame
+    players: Tuple[BatchedAgent, BatchedAgent]
+    move_count: int = 0
 
-    sense_actions_batch, move_actions_batch = [], []
-    for i_game in games_not_over_indices:
-        game = games[i_game]
-        sense_actions_batch.append(game.sense_actions())
-        move_actions_batch.append(game.move_actions())
-        notify_opponent_move_results(game, player.get_subplayer(i_game))
+    def get_curr_player(self):
+        return self.players[1 - int(self.game.turn)]
 
-    # --- play_sense(game, player, sense_actions, move_actions) ---
-    sense_batch = player.choose_sense_batched(games_not_over_indices, sense_actions_batch, move_actions_batch)
-    for sense, i_game in zip(sense_batch, games_not_over_indices):
-        if games[i_game].is_over():
+
+def play_local_game_batched(white_manager: BatchedAgentManager,
+                            black_manager: BatchedAgentManager,
+                            total_number: int = 128,
+                            batch_size: int = 32,
+                            move_limit: int = 100,
+                            seconds_per_player: float = 900) -> List[MatchResult]:
+
+    managers = (white_manager, black_manager)
+
+    #  for _ in range(batch_size)
+    matches_in_progress = []  # type: List[MatchInProgress]
+    match_results = []  # type: List[MatchResult]
+
+    while len(match_results) < total_number:
+
+        # Start new matches to fill up the batch.
+        while len(matches_in_progress) < min(batch_size, total_number - len(match_results)):
+            game = LocalGame(seconds_per_player=seconds_per_player)
+            white_player = white_manager.build_agent()
+            black_player = black_manager.build_agent()
+
+            white_name = white_manager.__class__.__name__
+            black_name = black_manager.__class__.__name__
+            game.store_players(white_name, black_name)
+
+            white_player.handle_game_start(chess.WHITE, game.board.copy(), black_name)
+            black_player.handle_game_start(chess.BLACK, game.board.copy(), white_name)
+
+            game.start()
+
+            matches_in_progress.append(MatchInProgress(game, (white_player, black_player)))
+
+        # Advance all the current matches by one turn.
+        play_turn_batched(matches_in_progress, managers)
+
+        # Record the results of the games that finished.
+        for i_match, match in enumerate(matches_in_progress.copy()):  # Copy so we can edit the list.
+            game = match.game
+            if match.move_count >= move_limit:
+                game.resign()
+
+            if game.is_over():
+                game.end()
+                winner_color = game.get_winner_color()
+                win_reason = game.get_win_reason()
+                game_history = game.get_game_history()
+
+                for player in match.players:
+                    player.handle_game_end(winner_color, win_reason, game_history)
+
+                match_results.append((winner_color, win_reason, game_history))
+
+                matches_in_progress.remove(match)
+
+    return match_results
+
+
+def play_turn_batched(matches: List[MatchInProgress], managers: Tuple[BatchedAgentManager, BatchedAgentManager]):
+    white_matches, black_matches = [], []
+    for match in matches:
+        container = white_matches if match.game.turn else black_matches
+        container.append(match)
+
+    # Handle white and black parts of the batch separately, since the agents are different.
+    for manager, manager_matches in zip(managers, (white_matches, black_matches)):
+        if len(manager_matches) == 0:
             continue
 
-        sense_result = games[i_game].sense(sense)
-        player.get_subplayer(i_game).handle_sense_result(sense_result)
+        sense_actions_batch, move_actions_batch = [], []
+        players = []
 
-    # --- play_move(game, player, move_actions, end_turn_last=end_turn_last) ---
-    move_batch = player.choose_move_batched(games_not_over_indices, move_actions_batch)
-    for move, i_game in zip(move_batch, games_not_over_indices):
-        game = games[i_game]
-        if game.is_over():
-            continue
+        for match in manager_matches:
+            sense_actions_batch.append(match.game.sense_actions())
+            move_actions_batch.append(match.game.move_actions())
+            players.append(match.get_curr_player())
 
-        requested_move, taken_move, opt_enemy_capture_square = game.move(move)
+            # todo Hide in the manager. Do this for all the agent methods.
+            notify_opponent_move_results(match.game, match.get_curr_player())
 
-        if not end_turn_last:
-            game.end_turn()
+        # --- play_sense(game, player, sense_actions, move_actions) ---
+        sense_batch = manager.choose_sense_batched(players, sense_actions_batch, move_actions_batch)
+        for sense, match, player in zip(sense_batch, manager_matches, players):
+            sense_result = match.game.sense(sense)
+            player.handle_sense_result(sense_result)
 
-        player.get_subplayer(i_game).handle_move_result(requested_move, taken_move,
-                                                        opt_enemy_capture_square is not None, opt_enemy_capture_square)
+        # --- play_move(game, player, move_actions, end_turn_last=end_turn_last) ---
+        move_batch = manager.choose_move_batched(players, move_actions_batch)
+        for move, match, player in zip(move_batch, manager_matches, players):
+            requested_move, taken_move, opt_enemy_capture_square = match.game.move(move)
 
-        if end_turn_last:
-            game.end_turn()
+            player.handle_move_result(requested_move, taken_move,
+                                      opt_enemy_capture_square is not None, opt_enemy_capture_square)
+
+            # The original code used the 'end_last_turn' flag to decide when to call this. Removed it.
+            match.game.end_turn()
+
+            match.move_count += 1
 
 
 def notify_opponent_move_results(game: Game, player: Player):
