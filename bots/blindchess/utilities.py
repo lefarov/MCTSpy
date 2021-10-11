@@ -4,7 +4,7 @@ import numpy as np
 
 from collections import deque
 
-from blindchess_bot.agent import Transition
+from bots.blindchess.agent import Transition
 
 
 class HistoryReplayBuffer:

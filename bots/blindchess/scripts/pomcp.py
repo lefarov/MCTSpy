@@ -4,7 +4,34 @@ from functools import partial
 from mctspy.policies import uct_action
 from mctspy.tree import POMCP, DecisionNode
 from mctspy.utilities import random_rollout_value, pull_children_belief_state
-from tictac_bot.simulator import TicTac
+
+import torch
+import json
+import random
+import numpy as np
+
+import chess
+from chess import (
+    SQUARES,  # Whites are at the bottom of the board
+    SQUARES_180,  # Squares rotaed 180 degrees (blacks are at the bottom)
+    SQUARE_NAMES,
+)
+
+from reconchess import (
+    LocalGame,
+    GameHistory,
+    GameHistoryEncoder,
+    GameHistoryDecoder,
+)
+
+from bots.blindchess.simulator import (
+    BlindChessMP,
+    MPGameAction,
+    fen_to_npboard,
+    board_state_to_npboard,
+    board_to_index_encoding,
+    PIECE_INDEX
+)
 
 
 def report(message):
@@ -17,11 +44,12 @@ wins = 0
 verbose = False
 promote_opponent_child = True
 
-game = TicTac()
+game = BlindChessMP()
 # TODO: even 1000 iterations we don't try every opponents move,
 #       that results in key error! WTF? 1000 iterations, Carl!
-n_iters = 1000
-seed = 1337
+n_iters = 100
+# seed = 1337
+seed = random.random()
 my_agent_id = 0  # We play for X
 
 state_value_estimator = partial(random_rollout_value, env=game, seed=seed)
@@ -29,17 +57,20 @@ mcts = POMCP(game, uct_action, state_value_estimator, n_iters)
 
 for i in range(n_games):
 
-    state, _ = game.get_initial_state()
-    mcts_root = DecisionNode(None, 0, {}, state.nextAgentId, [state], {state.nextAgentId: [None]})
+    state, agent_id = game.get_initial_state()
+    mcts_root = DecisionNode(None, 0, {}, agent_id, [state], {agent_id: [None]})
 
     node = mcts_root
     while not game.state_is_terminal(state):
 
         # TODO: make TicTacState hashable and assert that state is in node's belief state
 
-        # Extend tree from current node. 
+        # Extend tree from current node.
         # I.e. if node is not an initial state, some tree already exists
         mcts.build_tree(node)
+
+        for c in node.children.values():
+            print(f"Val: {c.value} Vis: {c.visits}")
 
         # Select the best "sense" action according to UCB with 0 exploration
         action = uct_action(node, 0)
@@ -47,7 +78,7 @@ for i in range(n_games):
         assert agent_id == my_agent_id
 
         # Move into Decision Node for "move" action
-        node = node.children[action].children[observation]
+        node = node.children[action].children[observation[agent_id]]
 
         # Select the best "move" action
         action = uct_action(node, 0)
@@ -55,14 +86,14 @@ for i in range(n_games):
         assert agent_id != my_agent_id
 
         # Move into Decision Node for opponent's "sense"
-        node = node.children[action].children[observation]
+        node = node.children[action].children[observation[agent_id]]
 
         # --- This part is hidden in the true simulator ---
         # Opponent's random "sense"
         action_sense = random.choice(tuple(game.enumerate_actions(state)))
         state, observation_sense, reward, agent_id = game.step(state, action_sense)
         assert agent_id != my_agent_id
-        
+
         # Opponent's random "move"
         action_move = random.choice(tuple(game.enumerate_actions(state)))
         state, observation_move, reward, agent_id = game.step(state, action_move)
@@ -88,7 +119,7 @@ for i in range(n_games):
             updated_belief_state = pull_children_belief_state(node, my_agent_id, last_observation=observation_move)
             # We still don't know which opponent's node to select,
             # so we probably need to discard the built sub-tree altogether.
-            # TODO: in Blind Chess we can see move action and observation, 
+            # TODO: in Blind Chess we can see move action and observation,
             #       so maybe we can sample the branch that has the same move action and observation
             #       important! (we don't have these opponent moves, if opponent didn't take our figure)
             node = DecisionNode(None, 0, {}, my_agent_id, updated_belief_state, node.history)
