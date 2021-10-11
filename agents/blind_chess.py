@@ -33,12 +33,14 @@ class Transition:
     action: int
     reward: float
     action_opponent: int = -1
+    done: float = 0.0
 
     def __iter__(self):
         yield self.observation
         yield self.action
         yield self.reward
         yield self.action_opponent
+        yield self.done
 
     @classmethod
     def stack(cls, transitions: t.Sequence):
@@ -165,6 +167,7 @@ class PlayerWithBoardHistory(Player):
         if win_reason.KING_CAPTURE:
             reward = 1 if winner_color == self.color else -1
             self.history[-1].reward = reward
+            self.history[-1].done = 1.0
 
         self.save_board_to_svg()
 

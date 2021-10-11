@@ -27,6 +27,7 @@ class HistoryReplayBuffer:
         self.obs_data = np.empty((size, *obs_shape), dtype=obs_dtype)
         self.act_data = np.empty((size, *act_shape), dtype=act_dtype)
         self.rew_data = np.empty((size,), dtype=np.float32)
+        self.done_data = np.empty((size,), dtype=np.float32)
         
         # Data for the opponents' moves
         self.act_opponent_data = np.empty((size, *act_shape), dtype=act_dtype)
@@ -74,6 +75,7 @@ class HistoryReplayBuffer:
         self.obs_data[loc:loc + length] = history.observation
         self.act_data[loc:loc + length] = history.action
         self.rew_data[loc:loc + length] = history.reward
+        self.done_data[loc:loc + length] = history.done
 
         self.act_opponent_data[loc:loc + length] = history.action_opponent
 
@@ -95,6 +97,7 @@ class HistoryReplayBuffer:
         act_opponent_batch = np.empty(act_batch_shape, dtype=self.act_dtype)
         
         rew_batch = np.empty((batch_size, ), dtype=np.float32)
+        done_batch = np.empty((batch_size, ), dtype=np.float32)
 
         # Sample `batch_size` of history indices proportional to their length
         history_weights = [h[1] - h[0] for h in self.history_indices]
@@ -124,10 +127,13 @@ class HistoryReplayBuffer:
             obs_batch[i] = obs_slice
             act_batch[i] = self.act_data[index]
             rew_batch[i] = self.rew_data[index]
+            done_batch[i] = self.done_data[index]
             obs_next_batch[i] = obs_next_slice
             act_opponent_batch[i] = self.act_opponent_data[index]
 
-        return obs_batch, act_batch, rew_batch, obs_next_batch, act_opponent_batch,
+        return (
+            obs_batch, act_batch, rew_batch, obs_next_batch, act_opponent_batch, done_batch
+        )
             
 
     def index_to_obs_sample(self, index, history_start, target_length):

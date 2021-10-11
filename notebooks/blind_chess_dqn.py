@@ -312,9 +312,10 @@ def main():
                 batch_rew,
                 batch_obs_next,
                 batch_act_opponent,
+                batch_done,
              ) = map(convert_to_tensor_on_device, data)
 
-            move_rew_count = batch_rew.count_nonzero().item()
+            terminal_count = batch_done.count_nonzero().item()
 
             # Compute opponnet loss
             # TODO: can we do single prop through network?
@@ -334,8 +335,7 @@ def main():
                 batch_act,
                 batch_rew,
                 batch_obs_next,
-                # TODO: implement explicit saving for `done`
-                torch.where(batch_rew != 0, 1., 0.),
+                batch_done,
                 discount=gamma
             )
 
@@ -349,9 +349,10 @@ def main():
                 batch_rew,
                 batch_obs_next,
                 _,
+                batch_done,
              ) = map(convert_to_tensor_on_device, data)
 
-            sense_rew_count = batch_rew.count_nonzero().item()
+            terminal_count += batch_done.count_nonzero().item()
 
             # Compute Sense loss
             sense_loss = q_loss(
@@ -361,14 +362,12 @@ def main():
                 batch_act,
                 batch_rew,
                 batch_obs_next,
-                # TODO: implement explicit saving for `done`
-                torch.where(batch_rew != 0, 1., 0.),
+                batch_done,
                 discount=gamma,
             )
 
             total_loss += loss_weights[2] * sense_loss
             # TODO: normalize losses
-            # TODO: move everything to GPU
 
             # Optimize the model
             optimizer.zero_grad()
@@ -385,8 +384,7 @@ def main():
                 "move_loss": move_loss,
                 "sense_loss": sense_loss,
                 "opponent_act_loss": opponent_act_loss,
-                "move_reward_fraction": move_rew_count / batch_size,
-                "sense_reward_fraction": sense_rew_count / batch_size,
+                "terminal_fraction": terminal_count / batch_size,
             })
 
         # Clone target network with specified frequency
