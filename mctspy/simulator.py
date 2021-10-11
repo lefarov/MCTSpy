@@ -2,13 +2,13 @@ import abc
 import typing as t
 
 
-class MCTSSimulator(abc.ABC):
+class SimulatorInterface(abc.ABC):
     """ Multiagent simulator interface supported by MCST.
     """
     @abc.abstractmethod
     def step(
         self, state: t.Hashable, action: t.Hashable
-    ) -> t.Tuple[t.Hashable, float, t.Hashable]:
+    ) -> t.Tuple[t.Hashable, t.Hashable, float, t.Hashable]:
         """ Step through simulation.
         """
         pass

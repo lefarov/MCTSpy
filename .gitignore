@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
+stockfish/
+wandb/
 
 # C extensions
 *.so
@@ -129,3 +131,5 @@ dmypy.json
 .pyre/
 
 .vscode/
+
+.idea

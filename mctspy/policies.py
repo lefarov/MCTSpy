@@ -20,13 +20,13 @@ def uct_action(
 ) -> t.Hashable:
     """ Select the action in decision node according to UCB formula.
     """
-    best_actions, best_score = [], -1
+    best_actions, best_score = [], None
     
     for action, chance_node in decision_node.children.items():
         
         score = uct(chance_node.value, chance_node.visits, decision_node.visits, exploration_constant)
 
-        if score > best_score:
+        if best_score is None or score > best_score:
             best_score = score
             best_actions = [action]
 
