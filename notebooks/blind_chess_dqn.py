@@ -67,7 +67,7 @@ def q_selector(q_net: torch.nn.Module, action: str="move") -> t.Callable:
     return selector
 
 
-def convert_to_tensor(array: np.ndarray) -> torch.Tensor:
+def convert_to_tensor(array: np.ndarray, device) -> torch.Tensor:
     tensor = torch.as_tensor(array)
     # If tensor has only batch dimension, insert a singular dimension
     if tensor.ndim == 1:
@@ -77,7 +77,7 @@ def convert_to_tensor(array: np.ndarray) -> torch.Tensor:
     if tensor.dtype == torch.int32:
         tensor = tensor.long()
 
-    return tensor
+    return tensor.to(device)
 
 
 def q_loss(
@@ -125,6 +125,10 @@ def q_loss(
 
 def main():
 
+    device = torch.device("cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+
     wandb.init(project="blind_chess", entity="not-working-solutions")
 
     narx_memory_length = 50
@@ -152,14 +156,16 @@ def main():
     reward_decay_factor = 0.0  # 1.05
 
     q_nets = [
-        TestQNet(narx_memory_length, n_hidden),
-        TestQNet(narx_memory_length, n_hidden),
+        TestQNet(narx_memory_length, n_hidden).to(device),
+        TestQNet(narx_memory_length, n_hidden).to(device),
     ]
 
     wandb.watch(q_nets[0])
 
+    convert_to_tensor_on_device = functools.partial(convert_to_tensor, device=device)
+
     # We can also clone the first Q-net, but I'm not sure that it's necessary 
-    q_net_target = TestQNet(narx_memory_length, n_hidden)
+    q_net_target = TestQNet(narx_memory_length, n_hidden).to(device)
     q_net_target.eval()
 
     # Opponent move loss
@@ -193,6 +199,7 @@ def main():
         q_nets[0],
         functools.partial(policy_sampler, eps=0.2),
         narx_memory_length,
+        device,
         capture_proxy_reward,
         move_proxy_reward,
         sense_proxy_reward,
@@ -201,7 +208,8 @@ def main():
     test_agent = QAgent(
         q_nets[0],
         functools.partial(policy_sampler, eps=0.0),
-        narx_memory_length
+        narx_memory_length,
+        device,
     )
 
     random_agent = RandomBot(
@@ -270,7 +278,7 @@ def main():
                 batch_rew,
                 batch_obs_next,
                 batch_act_opponent,
-             ) = map(convert_to_tensor, data)
+             ) = map(convert_to_tensor_on_device, data)
 
             move_rew_count = batch_rew.count_nonzero().item()
 
@@ -307,7 +315,7 @@ def main():
                 batch_rew,
                 batch_obs_next,
                 _,
-             ) = map(convert_to_tensor, data)
+             ) = map(convert_to_tensor_on_device, data)
 
             sense_rew_count = batch_rew.count_nonzero().item()
 
@@ -354,6 +362,7 @@ def main():
         print("Evaluation.")
         win_rate = 0
         for i_test_game in range(n_test_games):
+            # TODO: plot the game and save to WNB
             # TODO: Implement sampling of the colors.
             winner_color, win_reason, game_history = reconchess.play_local_game(test_agent, random_agent)
 

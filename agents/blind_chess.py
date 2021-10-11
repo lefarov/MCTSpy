@@ -293,6 +293,7 @@ class QAgent(Player):
         q_net,
         policy_sampler,
         narx_memory_length,
+        device,
         capture_reward_func=None,
         move_reward_func=None,
         sense_reward_func=None,
@@ -300,6 +301,8 @@ class QAgent(Player):
         self.board = None
         self.color = None
         self.nanrx_memory = None
+
+        self.device = device
 
         self.q_net = q_net
         self.policy_sampler = policy_sampler
@@ -354,7 +357,10 @@ class QAgent(Player):
 
         with torch.no_grad():
             # Compute state Value and Q-value for every sense action 
-            q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32).unsqueeze(0)  # Add the batch dim.
+            q_net_input = torch.as_tensor(
+                self.nanrx_memory, dtype=torch.float32, device=self.device
+            ).unsqueeze(0)  # Add the batch dim.
+           
             _, sense_q, *_ = self.q_net(q_net_input)
 
             sense_index = self.policy_sampler(sense_q.squeeze(0), list(range(64)))
@@ -386,7 +392,10 @@ class QAgent(Player):
 
         with torch.no_grad():
             # Compute state Value and Q-value for every move action
-            q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32).unsqueeze(0)  # Add the batch dim.
+            q_net_input = torch.as_tensor(
+                self.nanrx_memory, dtype=torch.float32, device=self.device,
+            ).unsqueeze(0)  # Add the batch dim.
+
             _, _, move_q, *_ = self.q_net(q_net_input)
             
             move_index = self.policy_sampler(move_q.squeeze(0), moves_indices)
