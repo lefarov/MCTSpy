@@ -12,6 +12,9 @@ import torch
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
+from bots.blindchess.play import BatchedAgentManagerSimple, play_local_game_batched
+from bots.blindchess.buffer import HistoryReplayBuffer
+from bots.blindchess.losses import q_loss
 from bots.blindchess.agent import (
     TestQNet,
     QAgent,
@@ -19,11 +22,14 @@ from bots.blindchess.agent import (
     RandomBot,
     QAgentBatched,
 )
-from bots.blindchess.losses import q_loss
-from bots.blindchess.utilities import move_proxy_reward, capture_proxy_reward, sense_proxy_reward, \
-    egreedy_masked_policy_sampler, q_selector, convert_to_tensor
-from bots.blindchess.play import BatchedAgentManagerSimple, play_local_game_batched
-from bots.blindchess.buffer import HistoryReplayBuffer
+from bots.blindchess.utilities import (
+    move_proxy_reward, 
+    capture_proxy_reward, 
+    sense_proxy_reward, 
+    egreedy_masked_policy_sampler, 
+    q_selector, 
+    convert_to_tensor,
+)
 
 
 def main():
@@ -105,7 +111,6 @@ def main():
     #     for net, eps in zip(q_nets, (0.2, 1.0))
     # ]
     
-    # TODO: check if this directory will be synced with the server.
     game_plots_path = os.path.abspath(
         os.path.join(wandb.run.dir if use_wandb else os.path.join(os.getcwd(), 'wandb'), os.pardir, "games")
     ) 
