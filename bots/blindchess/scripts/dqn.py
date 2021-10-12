@@ -10,7 +10,6 @@ from reconchess import WinReason
 
 import torch
 from torch.optim import Adam
-from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from bots.blindchess.play import BatchedAgentManagerSimple, play_local_game_batched
 from bots.blindchess.buffer import HistoryReplayBuffer
@@ -31,104 +30,98 @@ from bots.blindchess.utilities import (
     convert_to_tensor,
 )
 
+# Available options are "online", "offline" or "disabled"
+WANDB_MODE = "disabled"
+
+CONFIG = {
+    "narx_memory_length": 50,
+    "replay_size": 10000,
+    "batch_size": 2048,
+    
+    "n_hidden": 64,
+    "n_steps": 5000,
+    "n_batches_per_step": 10,
+    "n_games_per_step": 10,
+    "n_test_games": 128 * 10,
+    
+    "evaluation_freq": 100,
+    "evaluation_batch_size": 128,
+    
+    # Frequency for updating target Q network
+    "target_q_update": 500,
+    "lr": 0.01,
+    # Weights of opponent's move prediction, move td and sense td errors.
+    "loss_weights": (1e-7, 1., 1.),
+    "gamma": 1.0,
+    "gradient_clip": 100,
+
+    # Set to 0. if don't want to propagate terminal reward.
+    "reward_decay_factor": 1.05,  # 1.05
+}
+
 
 def main():
 
-    use_wandb = True
+    wandb.init(
+        project="blind_chess",
+        entity="not-working-solutions",
+        config=CONFIG,
+        mode=WANDB_MODE,
+    )
 
-    narx_memory_length = 50
-    replay_size = 10000
-    batch_size = 2048
+    conf = wandb.config
     
-    n_hidden = 64
-    n_steps = 5000
-    n_batches_per_step = 10
-    n_games_per_step = 10
-
-    n_test_games = 128 * 10
-    evaluation_freq = 100
-    evaluation_batch_size = 128
-    
-    # Frequency for updating target Q network
-    target_q_update = 500
-
-    # If you don't need learning rate annealing, set `le_end` equal to `lr_start`
-    lr_start = 0.01
-    lr_end = 0.0001
-    # Weights of opponent's move prediction, move td and sense td errors.
-    loss_weights = (1e-7, 1., 1.)
-    gamma = 1
-    gradient_clip = 100
-
-    # Set to 0. if don't want to propagate terminal reward.
-    reward_decay_factor = 1.05  # 1.05
-
     device = torch.device("cpu")
     if torch.cuda.is_available():
         device = torch.device("cuda")
 
-    if use_wandb:
-        wandb.init(project="blind_chess", entity="not-working-solutions")
+    # Setup replay buffer
+    replay_buffer = HistoryReplayBuffer(conf.replay_size, (8, 8, 13), tuple())
+    data_converter = functools.partial(convert_to_tensor, device=device)
 
+    # First network will be used by the trainable agent. Second one by opponent
     q_nets = [
-        TestQNet(narx_memory_length, n_hidden).to(device),
-        TestQNet(narx_memory_length, n_hidden).to(device),
+        TestQNet(conf.narx_memory_length, conf.n_hidden).to(device),
+        TestQNet(conf.narx_memory_length, conf.n_hidden).to(device),
     ]
 
-    if use_wandb:
-        wandb.watch(q_nets[0])
-
-    convert_to_tensor_on_device = functools.partial(convert_to_tensor, device=device)
-
     # We can also clone the first Q-net, but I'm not sure that it's necessary 
-    q_net_target = TestQNet(narx_memory_length, n_hidden).to(device)
+    q_net_target = TestQNet(conf.narx_memory_length, conf.n_hidden).to(device)
     q_net_target.eval()
 
     # Opponent move loss
+    # TODO: make Q-network as an torch module
     opponent_act_loss_func = torch.nn.CrossEntropyLoss()
 
     # Optimizer
-    optimizer = Adam(q_nets[0].parameters(), lr=lr_start)
-    lr_scheduler = CosineAnnealingLR(optimizer, n_steps, lr_end)
+    optimizer = Adam(q_nets[0].parameters(), lr=conf.lr)
 
-    # Report the size of the netowrks
+    # Report the size of the networks
     for stack in (q_nets[0].conv_stack, q_nets[0].fc_stack, q_nets[0]):
         net_size = 0
         for param in stack.parameters():
             net_size += param.numel()
-        print(f"Stack size: {net_size}")
 
-    # TODO: schedule exploration epsilon
-    # agents = [
-    #     QAgent(
-    #         net,
-    #         functools.partial(policy_sampler, eps=eps),
-    #         narx_memory_length,
-    #         capture_proxy_reward,
-    #         move_proxy_reward,
-    #         sense_proxy_reward,
-    #     )
-    #     for net, eps in zip(q_nets, (0.2, 1.0))
-    # ]
-    
-    game_plots_path = os.path.abspath(
-        os.path.join(wandb.run.dir if use_wandb else os.path.join(os.getcwd(), 'wandb'), os.pardir, "games")
-    ) 
+        print(f"Stack size: {net_size}") 
 
     training_agent = QAgent(
         q_nets[0],
         functools.partial(egreedy_masked_policy_sampler, eps=0.2),
-        narx_memory_length,
+        conf.narx_memory_length,
         device,
         capture_proxy_reward,
         move_proxy_reward,
         sense_proxy_reward,
     )
 
+    game_plots_path = os.path.abspath(
+        os.path.join(wandb.run.dir, os.pardir, "games")
+    )
+    
     test_agent = QAgent(
         q_nets[0],
         functools.partial(egreedy_masked_policy_sampler, eps=0.0),
-        narx_memory_length,
+        conf.narx_memory_length,
         device,
         root_plot_directory=game_plots_path
     )
@@ -140,7 +133,7 @@ def main():
     test_agent_batched = QAgentBatched(
         q_nets[0],
         functools.partial(egreedy_masked_policy_sampler, eps=0.0),
-        narx_memory_length,
+        conf.narx_memory_length,
         device
     )
 
@@ -148,14 +141,13 @@ def main():
     random_agent_batched = BatchedAgentManagerSimple(random_bot_ctor)
 
     agents = [training_agent, random_agent]
+    wandb.watch(q_nets[0])
 
-    replay_buffer = HistoryReplayBuffer(replay_size, (8, 8, 13), tuple())
-
-    for i_step in range(n_steps):
-        print(f"Step {i_step + 1} / {n_steps}")
+    for i_step in range(conf.n_steps):
+        print(f"Step {i_step + 1} / {conf.n_steps}")
 
         print("Playing.")
-        for i_game in range(n_games_per_step):
+        for i_game in range(conf.n_games_per_step):
             winner_color, win_reason, game_history = reconchess.play_local_game(agents[0], agents[1])
             # TODO: Implement return estimation as in Apex-DQN.
             # TODO: Implement prioritized replay
@@ -185,12 +177,12 @@ def main():
 
             # TODO: think if we can use AlphaZero state value trick (overwrite all rewards with 1.)
             # Reward shaping: propagate the final reward to the preceeding timesteps with exponential decay.
-            if reward_decay_factor != 0.0:
+            if conf.reward_decay_factor != 0.0:
                 length = max(len(agent.history) for agent in agents)
                 for i in range(-1, -length -1, -1):
                     try:
                         for agent in agents:
-                            agent.history[i-1].reward += agent.history[i].reward * (reward_decay_factor ** i)
+                            agent.history[i-1].reward += agent.history[i].reward * (conf.reward_decay_factor ** i)
 
                     # If we came to the end of the shortest history
                     except IndexError as e:
@@ -200,13 +192,12 @@ def main():
             # replay_buffer.add(Transition.stack(agents[1].history))
 
         # Report if our replay buffer is full
-        if use_wandb:
-            wandb.log({"replay_is_full": int(replay_buffer.is_full)})
+        wandb.log({"replay_is_full": int(replay_buffer.is_full)})
 
         print("Training.")
-        for i_batch in range(n_batches_per_step):
+        for i_batch in range(conf.n_batches_per_step):
             # Sample Move data
-            data = replay_buffer.sample_batch(batch_size, narx_memory_length, "move")
+            data = replay_buffer.sample_batch(conf.batch_size, conf.narx_memory_length, "move")
             (
                 batch_obs,
                 batch_act,
@@ -214,11 +205,11 @@ def main():
                 batch_obs_next,
                 batch_act_opponent,
                 batch_done,
-             ) = map(convert_to_tensor_on_device, data)
+             ) = map(data_converter, data)
 
             terminal_count = batch_done.count_nonzero().item()
 
-            # Compute opponnet loss
+            # Compute opponent's loss
             # TODO: can we do single prop through network?
             # TODO: adjust TD error scaling
             *_, pred_act_opponent = q_nets[0](batch_obs)
@@ -226,7 +217,7 @@ def main():
                 pred_act_opponent, batch_act_opponent.squeeze(-1)
             )
 
-            total_loss = loss_weights[0] * opponent_act_loss
+            total_loss = conf.loss_weights[0] * opponent_act_loss
 
             # Compute Move loss
             move_loss = q_loss(
@@ -237,13 +228,13 @@ def main():
                 batch_rew,
                 batch_obs_next,
                 batch_done,
-                discount=gamma
+                discount=conf.gamma
             )
 
-            total_loss += loss_weights[1] * move_loss
+            total_loss += conf.loss_weights[1] * move_loss
 
             # Sample Sense data
-            data = replay_buffer.sample_batch(batch_size, narx_memory_length, "sense")
+            data = replay_buffer.sample_batch(conf.batch_size, conf.narx_memory_length, "sense")
             (
                 batch_obs,
                 batch_act,
@@ -251,7 +242,7 @@ def main():
                 batch_obs_next,
                 _,
                 batch_done,
-             ) = map(convert_to_tensor_on_device, data)
+             ) = map(data_converter, data)
 
             terminal_count += batch_done.count_nonzero().item()
 
@@ -264,39 +255,34 @@ def main():
                 batch_rew,
                 batch_obs_next,
                 batch_done,
-                discount=gamma,
+                discount=conf.gamma,
             )
 
-            total_loss += loss_weights[2] * sense_loss
+            total_loss += conf.loss_weights[2] * sense_loss
             # TODO: normalize losses
 
             # Optimize the model
             optimizer.zero_grad()
             total_loss.backward()
-            
-            # TODO: check the gradients and clip if needed
-            # for _, param in q_nets[0].named_parameters():
-            #     param.grad.data.clamp_(gradient_clip, gradient_clip)
-
             optimizer.step()
 
-            if use_wandb:
-                wandb.log({
-                    "total_loss": total_loss,
-                    "move_loss": move_loss,
-                    "sense_loss": sense_loss,
-                    "opponent_act_loss": opponent_act_loss,
-                    "terminal_fraction": terminal_count / batch_size,
-                })
+            wandb.log({
+                "total_loss": total_loss,
+                "move_loss": move_loss,
+                "sense_loss": sense_loss,
+                "opponent_act_loss": opponent_act_loss,
+                "terminal_fraction": terminal_count / conf.batch_size,
+            })
 
         # Clone target network with specified frequency
-        if i_step % target_q_update == 0:
+        if i_step % conf.target_q_update == 0:
             q_net_target.load_state_dict(q_nets[0].state_dict())
 
         # Evaluate our agent with greedy policy
-        if i_step % evaluation_freq == 0:
+        if i_step % conf.evaluation_freq == 0:
             print("Evaluation.")
             time_before = time.time()
+            
             # TODO: save game plots to WANDB
             # Set the plotting subdirectory for the current game
             # test_tame_name = str(n_test_games * i_step + i_test_game)
@@ -305,8 +291,12 @@ def main():
 
             # TODO: Implement sampling of the colors.
             # winner_color, win_reason, game_history = reconchess.play_local_game(test_agent, test_opponent)
-            results = play_local_game_batched(test_agent_batched, random_agent_batched,
-                                              total_number=n_test_games, batch_size=evaluation_batch_size)
+            results = play_local_game_batched(
+                test_agent_batched,
+                random_agent_batched,
+                total_number=conf.n_test_games,
+                batch_size=conf.evaluation_batch_size,
+            )
 
             print(f"Evaluation finished in {time.time() - time_before:.2f} s.")
 
@@ -315,11 +305,7 @@ def main():
                 if winner_color == chess.WHITE and win_reason == WinReason.KING_CAPTURE:
                     win_rate += 1
 
-            if use_wandb:
-                wandb.log({"win_rate": win_rate / n_test_games})
-
-        # Update learning rate
-        # lr_scheduler.step()
+            wandb.log({"win_rate": win_rate / conf.n_test_games})
 
 
 if __name__ == '__main__':
