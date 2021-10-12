@@ -20,13 +20,11 @@ from reconchess import (
 
 from bots.blindchess.simulator import (
     BlindChessMP, 
-    MPGameAction, 
-    fen_to_npboard, 
-    board_state_to_npboard,
-    board_to_onehot,
-    board_to_index_encoding,
-    PIECE_INDEX
+    MPGameAction
 )
+from bots.blindchess.utilities import board_to_onehot, board_to_index_encoding, board_state_to_index_encoding, fen_to_index_encoding, \
+    PIECE_INDEX
+
 #%%
 
 game = LocalGame()

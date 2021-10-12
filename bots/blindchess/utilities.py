@@ -1,155 +1,149 @@
 import random
+import typing
 import typing as t
+
+import chess
 import numpy as np
 
-from collections import deque
 
-from bots.blindchess.agent import Transition
+# Chess pieces values according to https://www.chess.com/terms/chess-piece-value
+import torch
 
-
-class HistoryReplayBuffer:
-
-    def __init__(
-        self,
-        size: int,
-        obs_shape: t.Tuple,
-        act_shape: t.Tuple,
-        obs_dtype: t.Type=np.float32,
-        act_dtype: t.Type=np.int32,
-    ) -> None:
-
-        self.size = size
-        self.obs_shape = obs_shape
-        self.obs_dtype = obs_dtype
-        self.act_shape = act_shape
-        self.act_dtype = act_dtype
-
-        self.obs_data = np.empty((size, *obs_shape), dtype=obs_dtype)
-        self.act_data = np.empty((size, *act_shape), dtype=act_dtype)
-        self.rew_data = np.empty((size,), dtype=np.float32)
-        self.done_data = np.empty((size,), dtype=np.float32)
-        
-        # Data for the opponents' moves
-        self.act_opponent_data = np.empty((size, *act_shape), dtype=act_dtype)
-
-        self.history_indices = deque()
-
-        self.is_full = False
-
-    def add(self, history: Transition) -> None:
-        length = len(history.reward)
-        assert length <= self.size
-
-        # If buffer is empty, write the history starting at index 0.
-        if not self.history_indices:
-            self.write_history_at_location(history, 0)
-            return
-
-        last_entry = self.history_indices[-1][-1]
-        next_entry = self.history_indices[0][0] or self.size
-
-        # Pop history records from the buffer until we can fit current history
-        # between the end of the last entry and the beginning of the next one.
-        while self.history_indices and next_entry - last_entry < length:
-            start, _ = self.history_indices.popleft()
-            
-            # If we pop history record that starts at 0, it means that we don't have
-            # enough free space till the end of the buffer. Thus we need to write
-            # current history from the beginning of the buffer till the next record.
-            if start == 0:
-                self.is_full = True
-                last_entry = 0
-
-            # If indices deque is not empty, set the next entry pointer to the start
-            # of the next histroy record. If next history record starts at zero, it
-            # means that there're no more records till the end of the buffer.
-            if self.history_indices:
-                next_entry = self.history_indices[0][0] or self.size
-        
-        # Write history after the last entry in the buffer and rottate the indices deque.
-        self.write_history_at_location(history, last_entry)
-
-    def write_history_at_location(self, history: Transition, loc: int) -> None:
-        length = len(history.reward)
-        
-        self.obs_data[loc:loc + length] = history.observation
-        self.act_data[loc:loc + length] = history.action
-        self.rew_data[loc:loc + length] = history.reward
-        self.done_data[loc:loc + length] = history.done
-
-        self.act_opponent_data[loc:loc + length] = history.action_opponent
-
-        self.history_indices.appendleft((loc, loc + length))
-        self.history_indices.rotate(-1)
-
-    def sample_batch(self, batch_size, slice_length, action = "move"):
-        """ Sample the batch of data for the given type of action.
-        
-        TODO: should we always use numpy to control the random seed?
-        """
-        # Prepare datastorage for batch
-        obs_batch_shape = (batch_size, slice_length, *self.obs_shape)
-        obs_batch = np.empty(obs_batch_shape, dtype=self.obs_dtype)
-        obs_next_batch = np.empty(obs_batch_shape, dtype=self.obs_dtype)
-        
-        act_batch_shape = (batch_size, *self.act_shape)
-        act_batch = np.empty(act_batch_shape, dtype=self.act_dtype)
-        act_opponent_batch = np.empty(act_batch_shape, dtype=self.act_dtype)
-        
-        rew_batch = np.empty((batch_size, ), dtype=np.float32)
-        done_batch = np.empty((batch_size, ), dtype=np.float32)
-
-        # Sample `batch_size` of history indices proportional to their length
-        history_weights = [h[1] - h[0] for h in self.history_indices]
-        history_samples = random.choices(
-            self.history_indices, history_weights, k=batch_size
-        )
-
-        for i, history in enumerate(history_samples):
-            indices = list(range(history[0], history[1] - 1))
-
-            # Slice histroy entries that correspond to correct action type
-            if action == "move":
-                indices = indices[1::2]
-            elif action == "sense":
-                indices = indices[0::2]
-            else:
-                raise ValueError("Unknown action type.")
-
-            # Sample index uniformly
-            index = random.choice(indices)
-        
-            obs_slice = self.index_to_obs_sample(index, history[0], slice_length)
-            obs_next_slice = self.index_to_obs_sample(
-                index + 1, history[0], slice_length
-            )
-
-            obs_batch[i] = obs_slice
-            act_batch[i] = self.act_data[index]
-            rew_batch[i] = self.rew_data[index]
-            done_batch[i] = self.done_data[index]
-            obs_next_batch[i] = obs_next_slice
-            act_opponent_batch[i] = self.act_opponent_data[index]
-
-        return (
-            obs_batch, act_batch, rew_batch, obs_next_batch, act_opponent_batch, done_batch
-        )
-            
-
-    def index_to_obs_sample(self, index, history_start, target_length):
-        # Get the slice from the data storage
-        obs_slice_end = index + 1
-        obs_slice_start = max(obs_slice_end - target_length, history_start)
-        obs_slice = self.obs_data[obs_slice_start:obs_slice_end]
-
-        # Pad the time axis if needed, do not pad any other axis.
-        pads = [
-            (target_length - len(obs_slice), 0) if axis == 0
-            else (0, 0) for axis in range(obs_slice.ndim)
-        ]
-
-        return np.pad(obs_slice, pads, "edge")
+PIECE_VALUE = {
+    chess.PAWN: 1/8,
+    chess.KNIGHT: 3/8,
+    chess.BISHOP: 3/8,
+    chess.ROOK: 5/8,
+    chess.QUEEN: 8/8,
+    chess.KING: 8/8,
+}
 
 
+PIECE_INDEX = {" ": 0}
+# I know how dict-comprehension works, I just don't like how it looks
+for i, symbol in enumerate(chess.UNICODE_PIECE_SYMBOLS.keys()):
+    PIECE_INDEX[symbol] = i + 1
 
 
+def index_to_move(action: int):
+    return chess.Move(from_square=action // 64, to_square=action % 64)
+
+
+def move_to_index(move: chess.Move) -> int:
+    return move.from_square * 64 + move.to_square
+
+
+def move_to_onehot(move: chess.Move) -> np.ndarray:
+    move_onehot = np.zeros(64 * 64)
+    move_onehot[move.from_square * 64 + move.to_square] = 1
+
+    return move_onehot
+
+
+def board_to_onehot(board: chess.Board, piece_index=PIECE_INDEX):
+    board_onehot = np.zeros((64, len(piece_index)))
+
+    for square, piece in board.piece_map().items():
+        board_onehot[square][piece_index[piece.symbol()]] = 1
+
+    return board_onehot.reshape(8, 8, -1)
+
+
+def board_to_index_encoding(board: chess.Board, piece_index=PIECE_INDEX):
+    board_index = np.zeros((64, ), dtype=np.int32)
+
+    for square, piece in board.piece_map().items():
+        board_index[square] = piece_index[piece.symbol()]
+
+    return board_index.reshape(8, 8)
+
+
+def board_state_to_index_encoding(board_state: chess._BoardState, piece_index: typing.Dict):
+    board = chess.Board.empty()
+    board_state.restore(board)
+
+    return board_to_index_encoding(board, piece_index)
+
+
+def fen_to_index_encoding(fen, piece_index=PIECE_INDEX):
+    board = chess.Board.empty()
+    board.set_fen(fen)
+
+    return board_to_index_encoding(board, piece_index)
+
+
+def move_proxy_reward(taken_move, requested_move):
+    # If invalid move was selected
+    if taken_move is None:
+        return -0.5
+
+    # If valid move was selected, but it was modified because of unknown opponent figure
+    if taken_move != requested_move:
+        return -0.01
+
+    return 0.0
+
+
+def capture_proxy_reward(piece: chess.Piece, lost: bool, weight=0.2):
+    # If Opponent captured your piece.
+    if lost:
+        # Return negative piece value multiplied by the importance weight of sense action.
+        return - PIECE_VALUE[piece.piece_type] * weight
+    else:
+        # Return value of a Pawn, since we don't know which piece we've captured.
+        return PIECE_VALUE[chess.PAWN] * weight
+
+
+def sense_proxy_reward(piece: chess.Piece, weight=0.0):
+    # Return sensed piece value multiplied by the importance weight of sense action.
+    return PIECE_VALUE[piece.piece_type] * weight
+
+
+def egreedy_masked_policy_sampler(
+    q_values: torch.Tensor,
+    valid_action_indices,
+    mask_invalid_actions=False,
+    eps: float = 0.05
+) -> int:
+
+    action_q_masked = torch.full_like(q_values, fill_value=torch.finfo(q_values.dtype).min)
+    action_q_masked[valid_action_indices] = q_values[valid_action_indices]
+
+    # If we don't mask invalid actions, use original Q as masked values
+    if not mask_invalid_actions:
+        action_q_masked = q_values
+
+    if random.random() >= eps:
+        action_index = torch.argmax(action_q_masked).item()
+    else:
+        action_index = random.choice(valid_action_indices)
+
+    return action_index
+
+
+def q_selector(q_net: torch.nn.Module, action: str="move") -> t.Callable:
+    # Select requested output of the Q-net
+    if action == "move":
+        index = 2
+    elif action == "sense":
+        index = 1
+    else:
+        raise ValueError("Unknown action type.")
+
+    def selector(obs):
+        return q_net(obs)[index]
+
+    return selector
+
+
+def convert_to_tensor(array: np.ndarray, device) -> torch.Tensor:
+    tensor = torch.as_tensor(array)
+    # If tensor has only batch dimension, insert a singular dimension
+    if tensor.ndim == 1:
+        tensor = tensor.unsqueeze(-1)
+
+    # Torch indexing supports only int64
+    if tensor.dtype == torch.int32:
+        tensor = tensor.long()
+
+    return tensor.to(device)

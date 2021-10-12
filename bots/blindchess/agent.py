@@ -20,12 +20,7 @@ from reconchess import (
     WinReason,
 )
 
-from bots.blindchess.simulator import (
-    board_to_onehot,
-    index_to_move,
-    move_to_index,
-    PIECE_INDEX,
-)
+from bots.blindchess.utilities import index_to_move, move_to_index, board_to_onehot, PIECE_INDEX
 from bots.blindchess.play import BatchedAgentManager
 
 
@@ -53,17 +48,6 @@ class Transition:
                 yield np.stack(items)
             
         return cls(*stacking_map(transitions))
-
-
-# Chess pieces values according to https://www.chess.com/terms/chess-piece-value
-PIECE_VALUE = {
-    chess.PAWN: 1/8,
-    chess.KNIGHT: 3/8,
-    chess.BISHOP: 3/8,
-    chess.ROOK: 5/8,
-    chess.QUEEN: 8/8,
-    chess.KING: 8/8,
-}
 
 
 class PlayerWithBoardHistory(Player):
