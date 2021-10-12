@@ -164,7 +164,7 @@ class PlayerWithBoardHistory(Player):
     def save_board_to_svg(self, lastmove=None):
         """Plot the board state with the last requested move."""
 
-        if self._root_plot_directory is not None:
+        if self.plot_directory is not None:
             svg_board = chess.svg.board(self.board, lastmove=lastmove)
             svg_path = os.path.join(self.plot_directory, f"_{self._plot_index}.svg")
 
@@ -519,27 +519,24 @@ class TestQNet(torch.nn.Module):
         return state_val, sense_q, move_q, opponent_move
 
 
-class QAgentBatched(BatchedAgentManager):
+class QAgentManager(BatchedAgentManager):
 
     def __init__(
         self,
         q_net,
         policy_sampler,
-        narx_memory_length,
-        device
+        device,
+        parital_agent_factory,
     ):
-
         self.q_net = q_net
         self.policy_sampler = policy_sampler
-        self.narx_memory_length = narx_memory_length
         self.device = device
+        
+        self.partial_agent_factory = parital_agent_factory
 
     def build_agent(self) -> QAgent:
-        return QAgent(
-            self.q_net,
-            self.policy_sampler,
-            self.narx_memory_length,
-            self.device
+        return self.partial_agent_factory(
+            self.q_net, self.policy_sampler, self.device
         )
 
     def choose_move_batched(self,
@@ -595,13 +592,13 @@ class QAgentBatched(BatchedAgentManager):
         return sense_batch
 
     def _build_narx_batch(self, agents):
-        # TODO: allow for None move actions
         # Add latest state of observation to the NARX memory
-        narx_memory_batch = torch.empty((len(agents), *agents[0].nanrx_memory.shape),
-                                        dtype=torch.float32, device=self.device)
+        narx_memory_batch = np.empty(
+            (len(agents), *agents[0].nanrx_memory.shape), dtype=np.float32
+        )
 
         for i, agent in enumerate(agents):
             agent.add_to_memory(board_to_onehot(agent.board))
-            narx_memory_batch[i, ...] = torch.as_tensor(agent.nanrx_memory,
-                                                        dtype=narx_memory_batch.dtype, device=self.device)
-        return narx_memory_batch
+            narx_memory_batch[i, ...] = agent.nanrx_memory
+        
+        return torch.as_tensor(narx_memory_batch, device=self.device)
