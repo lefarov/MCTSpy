@@ -1,147 +1,29 @@
 import functools
+import itertools
 import os
 import time
-
-import torch
-import random
-import itertools
-
-from reconchess import WinReason
-
 import wandb
-import typing as t
-import numpy as np
 
 import chess
 import reconchess
+from reconchess import WinReason
 
+import torch
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from bots.blindchess.agent import TestQNet, QAgent, Transition, RandomBot, PIECE_VALUE, QAgentBatched
+from bots.blindchess.agent import (
+    TestQNet,
+    QAgent,
+    Transition,
+    RandomBot,
+    QAgentBatched,
+)
+from bots.blindchess.losses import q_loss
+from bots.blindchess.utilities import move_proxy_reward, capture_proxy_reward, sense_proxy_reward, \
+    egreedy_masked_policy_sampler, q_selector, convert_to_tensor
 from bots.blindchess.play import BatchedAgentManagerSimple, play_local_game_batched
-from bots.blindchess.utilities import HistoryReplayBuffer
-
-
-def move_proxy_reward(taken_move, requested_move):
-    # If invalid move was selected
-    if taken_move is None:
-        return -0.5
-
-    # If valid move was selected, but it was modified because of unknown opponent figure
-    if taken_move != requested_move:
-        return -0.01
-
-    return 0.0
-
-
-def capture_proxy_reward(piece: chess.Piece, lost: bool, weight=0.2):
-    # If Opponent captured your piece.
-    if lost:
-        # Return negative piece value multiplied by the importance weight of sense action.
-        return - PIECE_VALUE[piece.piece_type] * weight
-    else:
-        # Return value of a Pawn, since we don't know which piece we've captured.
-        return PIECE_VALUE[chess.PAWN] * weight
-
-
-def sense_proxy_reward(piece: chess.Piece, weight=0.0):
-    # Return sensed piece value multiplied by the importance weight of sense action.
-    return PIECE_VALUE[piece.piece_type] * weight
-
-
-def policy_sampler(
-    q_values: torch.Tensor,
-    valid_action_indices,
-    mask_invalid_actions=False,
-    eps: float = 0.05
-) -> int:
-    
-    action_q_masked = torch.full_like(q_values, fill_value=torch.finfo(q_values.dtype).min)
-    action_q_masked[valid_action_indices] = q_values[valid_action_indices]
-
-    # If we don't mask invalid actions, use original Q as masked values
-    if not mask_invalid_actions:
-        action_q_masked = q_values
-
-    if random.random() >= eps:
-        action_index = torch.argmax(action_q_masked).item()
-    else:
-        action_index = random.choice(valid_action_indices)
-
-    return action_index
-
-
-def q_selector(q_net: torch.nn.Module, action: str="move") -> t.Callable:
-    # TODO: replace string by Enum
-    # Select reqested output of the Q-net
-    if action == "move":
-        index = 2
-    elif action == "sense":
-        index = 1
-    else:
-        raise ValueError("Unknown action type.")
-
-    def selector(obs):
-        return q_net(obs)[index]
-
-    return selector
-
-
-def convert_to_tensor(array: np.ndarray, device) -> torch.Tensor:
-    tensor = torch.as_tensor(array)
-    # If tensor has only batch dimension, insert a singular dimension
-    if tensor.ndim == 1:
-        tensor = tensor.unsqueeze(-1)
-
-    # Torch indexing supports only int64
-    if tensor.dtype == torch.int32:
-        tensor = tensor.long()
-
-    return tensor.to(device)
-
-
-def q_loss(
-    model: torch.nn.Module,
-    model_target: torch.nn.Module,
-    obs: torch.Tensor,
-    act: torch.Tensor,
-    rew: torch.Tensor,
-    obs_next: torch.Tensor,
-    done: torch.Tensor,
-    discount: int=0.9,
-    double_q: bool=True,
-) -> torch.Tensor:
-        # Compute Q values for observation at t
-        q_values = model(obs)
-        # Select Q values for chosen actions
-        q_values_selected = q_values.gather(-1, act)
-
-        with torch.no_grad():
-            # Compute Q values for next observation using target model
-            q_values_next = model_target(obs_next)
-
-        if double_q:
-            # Double Q idea: select the optimum action for the observation at t+1
-            # using the trainable model, but compute it's Q value with target one
-            q_values_next_estimate = model(obs_next)
-            q_opt_next = q_values_next.gather(
-                -1, torch.argmax(q_values_next_estimate, dim=-1, keepdim=True)
-            )
-
-        else:
-            # Select max Q value for the observation at t+1
-            q_opt_next = torch.max(q_values_next, dim=-1, keepdim=True)
-
-        # Target estimate for Cumulative Discounted Reward
-        q_values_target = rew + discount * q_opt_next * (1. - done)
-
-        # Compute TD error
-        loss = torch.nn.functional.smooth_l1_loss(
-            q_values_selected, q_values_target
-        )
-
-        return loss
+from bots.blindchess.buffer import HistoryReplayBuffer
 
 
 def main():
@@ -230,7 +112,7 @@ def main():
 
     training_agent = QAgent(
         q_nets[0],
-        functools.partial(policy_sampler, eps=0.2),
+        functools.partial(egreedy_masked_policy_sampler, eps=0.2),
         narx_memory_length,
         device,
         capture_proxy_reward,
@@ -240,7 +122,7 @@ def main():
 
     test_agent = QAgent(
         q_nets[0],
-        functools.partial(policy_sampler, eps=0.0),
+        functools.partial(egreedy_masked_policy_sampler, eps=0.0),
         narx_memory_length,
         device,
         root_plot_directory=game_plots_path
@@ -252,7 +134,7 @@ def main():
 
     test_agent_batched = QAgentBatched(
         q_nets[0],
-        functools.partial(policy_sampler, eps=0.0),
+        functools.partial(egreedy_masked_policy_sampler, eps=0.0),
         narx_memory_length,
         device
     )

@@ -1,12 +1,8 @@
-import typing as t
-
 import chess
 import json
 import enum
-import typing
-import numpy as np
 
-from collections import namedtuple, defaultdict
+from collections import namedtuple
 from reconchess import (
     LocalGame,
     GameHistoryEncoder,
@@ -16,11 +12,6 @@ from reconchess import (
 )
 
 from mctspy.simulator import SimulatorInterface
-
-
-def capture_reward(piece: chess.Piece, game: LocalGame):
-    """Simple capturing reward."""
-    return 1
 
 
 """ Namedtuple for the game state
@@ -353,56 +344,3 @@ class BlindChessMP(SimulatorInterface):
 
         winner_color = self.game.get_winner_color()
         return {winner_color: 1, not winner_color: -1}
-
-
-# I know how dict-comprehension works, I just don't like how it looks
-PIECE_INDEX = {" ": 0}
-for i, symbol in enumerate(chess.UNICODE_PIECE_SYMBOLS.keys()):
-    PIECE_INDEX[symbol] = i + 1
-
-
-def board_state_to_npboard(board_state: chess._BoardState, piece_index: typing.Dict):
-    board = chess.Board.empty()
-    board_state.restore(board)
-
-    return board_to_index_encoding(board, piece_index)
-
-
-def fen_to_npboard(fen, piece_index=PIECE_INDEX):
-    board = chess.Board.empty()
-    board.set_fen(fen)
-
-    return board_to_index_encoding(board, piece_index)
-
-
-def board_to_index_encoding(board: chess.Board, piece_index=PIECE_INDEX):
-    board_index = np.zeros((64, ), dtype=np.int32)
-
-    for square, piece in board.piece_map().items():
-        board_index[square] = piece_index[piece.symbol()]
-
-    return board_index.reshape(8, 8)
-
-
-def board_to_onehot(board: chess.Board, piece_index=PIECE_INDEX):
-    board_onehot = np.zeros((64, len(piece_index)))
-
-    for square, piece in board.piece_map().items():
-        board_onehot[square][piece_index[piece.symbol()]] = 1
-
-    return board_onehot.reshape(8, 8, -1)
-
-
-def move_to_onehot(move: chess.Move) -> np.ndarray:
-    move_onehot = np.zeros(64 * 64)
-    move_onehot[move.from_square * 64 + move.to_square] = 1
-
-    return move_onehot
-
-
-def move_to_index(move: chess.Move) -> int:
-    return move.from_square * 64 + move.to_square
-
-
-def index_to_move(action: int):
-    return chess.Move(from_square=action // 64, to_square=action % 64)
