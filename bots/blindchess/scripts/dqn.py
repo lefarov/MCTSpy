@@ -34,7 +34,7 @@ from bots.blindchess.utilities import (
 
 def main():
 
-    use_wandb = False
+    use_wandb = True
 
     narx_memory_length = 50
     replay_size = 10000
