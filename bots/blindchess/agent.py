@@ -1,5 +1,3 @@
-import functools
-import operator
 import os
 import random
 from typing import List, Optional
@@ -20,7 +18,7 @@ from reconchess import (
     WinReason,
 )
 
-from bots.blindchess.utilities import index_to_move, move_to_index, board_to_onehot, PIECE_INDEX
+from bots.blindchess.utilities import index_to_move, move_to_index, board_to_onehot
 from bots.blindchess.play import BatchedAgentManager
 
 
@@ -439,100 +437,6 @@ class QAgent(PlayerWithBoardHistory):
         )
 
         return move
-
-
-class TestQNet(torch.nn.Module):
-
-    def __init__(self, narx_memory_length, n_hidden, channels_per_layer: t.Optional[t.List[int]] = None):
-        super().__init__()
-
-        self.narx_memory_length = narx_memory_length
-        self.n_hidden = n_hidden
-        self.channels_per_layer = channels_per_layer or [64, 128, 256]
-
-        # Board convolution backbone:
-        # 3D convolution layer is applied to a thensor with shape (N,C​,D​,H​,W​)
-        # where N - batch size, C (channels) - one-hot-encoding of a piece,
-        # D (depth) - history length, H and W are board dimentions (i.e. 8x8).
-
-        self.conv_stack = torch.nn.Sequential(
-            # torch.nn.Conv3d(
-            #     in_channels=len(PIECE_INDEX),
-            #     out_channels=self.channels_per_layer[0],
-            #     kernel_size=(3, 3, 3),
-            #     # stride=(2, 2, 2)
-            # ),
-            # torch.nn.ReLU(),
-            # torch.nn.Conv3d(
-            #     in_channels=self.channels_per_layer[0],
-            #     out_channels=self.channels_per_layer[1],
-            #     kernel_size=(3, 3, 3),
-            #     # stride=(2, 2, 2)
-            # ),
-            # torch.nn.ReLU(),
-            # torch.nn.Conv3d(
-            #     in_channels=self.channels_per_layer[1],
-            #     out_channels=self.channels_per_layer[2],
-            #     kernel_size=(3, 3, 3),
-            #     # stride=(2, 2, 2)
-            # ),
-            # torch.nn.ReLU()
-            torch.nn.Conv3d(
-                in_channels=len(PIECE_INDEX),
-                out_channels=64,
-                kernel_size=(5, 5, 5),
-                stride=(3, 3, 3)
-            ),
-            torch.nn.ReLU(),
-            # torch.nn.Conv3d(
-            #     in_channels=64,
-            #     out_channels=128,
-            #     kernel_size=(3, 3, 3),
-            #     stride=(3, 3, 3)
-            # ),
-            # torch.nn.ReLU()
-        )
-
-        dummy_input = torch.zeros((1, len(PIECE_INDEX), self.narx_memory_length, 8, 8))
-        fc_input_size = functools.reduce(operator.mul, self.conv_stack(dummy_input).shape)
-
-        self.fc_stack = torch.nn.Sequential(
-            torch.nn.Linear(fc_input_size, n_hidden),
-            torch.nn.ReLU(),
-            torch.nn.Linear(n_hidden, n_hidden),
-            torch.nn.ReLU(),
-        )
-
-        # Player heads
-        self.fc_state_val = torch.nn.Linear(self.n_hidden, 1)
-        self.fc_sense_adv = torch.nn.Linear(self.n_hidden, 64)
-        self.fc_move_adv = torch.nn.Linear(self.n_hidden, 64 * 64)
-        # Opponent heads
-        self.fc_opponent_move = torch.nn.Linear(self.n_hidden, 64 * 64)
-
-    def forward(self, board_memory: torch.Tensor):
-        # Re-align board memory to fit the shape described in init
-        # (B, T, H, W, C) -> (B, C, T, H, W)
-        x = board_memory.permute(0, 4, 1, 2, 3)
-
-        x = self.conv_stack(x)
-
-        x = torch.flatten(x, start_dim=1)
-
-        x = self.fc_stack(x)
-
-        # Compute heads
-        state_val = torch.nn.functional.relu(self.fc_state_val(x))
-        
-        sense_adv = torch.nn.functional.relu(self.fc_sense_adv(x))
-        sense_q = state_val + sense_adv - sense_adv.mean(-1, keepdim=True)
-        
-        move_adv = torch.nn.functional.relu(self.fc_move_adv(x))
-        move_q = state_val + move_adv - move_adv.mean(-1, keepdim=True)
-
-        opponent_move = torch.nn.functional.relu(self.fc_opponent_move(x))
-
-        return state_val, sense_q, move_q, opponent_move
 
 
 class QAgentManager(BatchedAgentManager):
