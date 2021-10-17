@@ -345,6 +345,8 @@ class QAgent(PlayerWithBoardHistory):
         self.device = device
         self.policy_sampler = policy_sampler
 
+        self.move_num = 64 * 64
+
     def handle_game_start(
         self, color: Color, board: chess.Board, opponent_name: str
     ):
@@ -383,7 +385,14 @@ class QAgent(PlayerWithBoardHistory):
 
             sense_index = self.policy_sampler(sense_q.squeeze(0), list(range(64)))
 
-        self.history.append(Transition(board_to_onehot(self.board), sense_index, reward=0))
+        self.history.append(
+            Transition(
+                board_to_onehot(self.board),
+                sense_index,
+                reward=0,
+                action_mask=np.ones(self.move_num),
+            )
+        )
 
         return sense_actions[sense_index]
 
@@ -605,7 +614,14 @@ class QAgentManager(BatchedAgentManager):
         for agent, senses, sense_q in zip(agents, sense_action_lists, sense_q_batch):
             sense_index = agent.policy_sampler(sense_q, list(range(64)))
 
-            agent.history.append(Transition(board_to_onehot(agent.board), sense_index, reward=0))
+            agent.history.append(
+                Transition(
+                    board_to_onehot(agent.board),
+                    sense_index,
+                    reward=0,
+                    action_mask=np.ones(agent.move_num),
+                )
+            )
 
             sense_batch.append(senses[sense_index])
 

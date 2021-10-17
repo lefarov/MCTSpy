@@ -14,6 +14,7 @@ class HistoryReplayBuffer:
         size: int,
         obs_shape: t.Tuple,
         act_shape: t.Tuple,
+        act_mask_shape: t.Tuple,
         obs_dtype: t.Type=np.float32,
         act_dtype: t.Type=np.int32,
     ) -> None:
@@ -23,6 +24,7 @@ class HistoryReplayBuffer:
         self.obs_dtype = obs_dtype
         self.act_shape = act_shape
         self.act_dtype = act_dtype
+        self.act_mask_shape = act_mask_shape
 
         self.obs_data = np.empty((size, *obs_shape), dtype=obs_dtype)
         self.act_data = np.empty((size, *act_shape), dtype=act_dtype)
@@ -31,6 +33,8 @@ class HistoryReplayBuffer:
         
         # Data for the opponents' moves
         self.act_opponent_data = np.empty((size, *act_shape), dtype=act_dtype)
+        # Data for available moves
+        self.act_mask_data = np.empty((size, *act_mask_shape), dtype=np.float32)
 
         self.history_indices = deque()
 
@@ -78,6 +82,7 @@ class HistoryReplayBuffer:
         self.done_data[loc:loc + length] = history.done
 
         self.act_opponent_data[loc:loc + length] = history.action_opponent
+        self.act_mask_data[loc:loc + length] = history.action_mask
 
         self.history_indices.appendleft((loc, loc + length))
         self.history_indices.rotate(-1)
@@ -95,6 +100,8 @@ class HistoryReplayBuffer:
         act_batch_shape = (batch_size, *self.act_shape)
         act_batch = np.empty(act_batch_shape, dtype=self.act_dtype)
         act_opponent_batch = np.empty(act_batch_shape, dtype=self.act_dtype)
+        
+        act_mask_batch = np.empty((batch_size, *self.act_mask_shape), dtype=np.float32)
         
         rew_batch = np.empty((batch_size, ), dtype=np.float32)
         done_batch = np.empty((batch_size, ), dtype=np.float32)
@@ -130,9 +137,16 @@ class HistoryReplayBuffer:
             done_batch[i] = self.done_data[index]
             obs_next_batch[i] = obs_next_slice
             act_opponent_batch[i] = self.act_opponent_data[index]
+            act_mask_batch[i] = self.act_mask_data[index]
 
         return (
-            obs_batch, act_batch, rew_batch, obs_next_batch, act_opponent_batch, done_batch
+            obs_batch,
+            act_batch,
+            rew_batch,
+            done_batch,
+            obs_next_batch,
+            act_opponent_batch,
+            act_mask_batch,
         )
 
     def index_to_obs_sample(self, index, history_start, target_length):

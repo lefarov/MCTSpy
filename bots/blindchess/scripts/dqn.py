@@ -42,8 +42,8 @@ CONFIG = {
     "n_hidden": 64,
     "n_steps": 5000,
     "n_batches_per_step": 10,
-    "n_games_per_step": 128,
-    "n_test_games": 128,
+    "n_games_per_step": 1,
+    "n_test_games": 1,
     
     "evaluation_freq": 100,
     "game_batch_size": 128,
@@ -89,7 +89,7 @@ def main():
         device = torch.device("cuda")
 
     # Setup replay buffer
-    replay_buffer = HistoryReplayBuffer(conf.replay_size, (8, 8, 13), tuple())
+    replay_buffer = HistoryReplayBuffer(conf.replay_size, (8, 8, 13), tuple(), (4096, ))
     data_converter = functools.partial(convert_to_tensor, device=device)
 
     # Trainable network
@@ -212,9 +212,10 @@ def main():
                 batch_obs,
                 batch_act,
                 batch_rew,
+                batch_done,
                 batch_obs_next,
                 batch_act_opponent,
-                batch_done,
+                batch_act_mask,
              ) = map(data_converter, data)
 
             terminal_count = batch_done.count_nonzero().item()
@@ -249,9 +250,10 @@ def main():
                 batch_obs,
                 batch_act,
                 batch_rew,
+                batch_done,
                 batch_obs_next,
                 _,
-                batch_done,
+                batch_act_mask,
              ) = map(data_converter, data)
 
             terminal_count += batch_done.count_nonzero().item()
