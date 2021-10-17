@@ -531,12 +531,12 @@ class QAgentManager(BatchedAgentManager):
         self.q_net = q_net
         self.policy_sampler = policy_sampler
         self.device = device
-        
+
         self.partial_agent_factory = parital_agent_factory
 
-    def build_agent(self) -> QAgent:
+    def build_agent(self, *args, **kwargs) -> QAgent:
         return self.partial_agent_factory(
-            self.q_net, self.policy_sampler, self.device
+            self.q_net, self.policy_sampler, self.device, *args, **kwargs
         )
 
     def choose_move_batched(self,

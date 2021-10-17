@@ -38,8 +38,8 @@ class DelegatingAgentManager(BatchedAgentManager):
     def __init__(self, player_ctor: Callable[[], Player]):
         self.player_ctor = player_ctor
 
-    def build_agent(self) -> BatchedAgent:
-        return self.player_ctor()
+    def build_agent(self, *args, **kwargs) -> BatchedAgent:
+        return self.player_ctor(*args, **kwargs)
 
     def choose_move_batched(self,
                             agents: List[BatchedAgent],

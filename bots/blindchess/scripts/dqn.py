@@ -1,8 +1,9 @@
+import os
 import functools
 import itertools
-import os
 import time
 import wandb
+import tempfile
 
 import chess
 import reconchess
@@ -76,7 +77,13 @@ def main():
     )
 
     conf = wandb.config
+
+    plotting_dir = os.path.abspath(os.path.join(wandb.run.dir, os.pardir, "game"))
+    if WANDB_MODE == "disabled":
+        plotting_dir = tempfile.TemporaryDirectory()
     
+    print(f"Root plotting direcotry: {plotting_dir}")
+
     device = torch.device("cpu")
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -107,7 +114,7 @@ def main():
     # Optimizer
     optimizer = Adam(q_net.parameters(), lr=conf.lr)
 
-    def partial_agent_factory(q_net, policy_sampler, device):
+    def q_agent_factory(q_net, policy_sampler, device, *args, **kwargs):
         return QAgent(
             q_net,
             policy_sampler,
@@ -116,37 +123,42 @@ def main():
             capture_proxy_reward,
             move_proxy_reward,
             sense_proxy_reward,
+            *args,
+            **kwargs,
         )
 
-    train_agent_batched = QAgentManager(
+    train_agent_manager = QAgentManager(
         q_net,
         functools.partial(egreedy_masked_policy_sampler, eps=0.2),
         device,
-        partial_agent_factory,
+        q_agent_factory,
     )
 
-    test_agent_batched = QAgentManager(
+    test_agent_manager = QAgentManager(
         q_net,
         functools.partial(egreedy_masked_policy_sampler, eps=0.0),
         device,
-        partial_agent_factory,
+        q_agent_factory,
     )
  
-    random_agent_batched = DelegatingAgentManager(
-        lambda: RandomBot(
+    def random_agent_factory(*args, **kwargs):
+        return RandomBot(
             capture_proxy_reward,
             move_proxy_reward,
-            sense_proxy_reward
+            sense_proxy_reward,
+            *args,
+            **kwargs
         )
-    )
+
+    random_agent_manager = DelegatingAgentManager(random_agent_factory)
 
     for i_step in range(conf.n_steps):
         print(f"Step {i_step + 1} / {conf.n_steps}")
 
         print("Playing.")
         results = play_local_game_batched(
-            train_agent_batched,
-            random_agent_batched,
+            train_agent_manager,
+            random_agent_manager,
             total_number=conf.n_games_per_step,
             batch_size=conf.game_batch_size,
         )
@@ -279,16 +291,10 @@ def main():
         if i_step % conf.evaluation_freq == 0:
             print("Evaluation.")
             time_before = time.time()
-            
-            # TODO: save game plots to WANDB
-            # Set the plotting subdirectory for the current game
-            # test_tame_name = str(n_test_games * i_step + i_test_game)
-            # test_agent.plot_directory = f"agent_{test_tame_name}"
-            # test_opponent.plot_directory = f"opponent_{test_tame_name}"
 
             results = play_local_game_batched(
-                test_agent_batched,
-                random_agent_batched,
+                test_agent_manager,
+                random_agent_manager,
                 total_number=conf.n_test_games,
                 batch_size=conf.game_batch_size,
             )
@@ -301,6 +307,18 @@ def main():
                     win_rate += 1
 
             wandb.log({"win_rate": win_rate / conf.n_test_games})
+
+            # Play one more game to write the plots
+            test_agent = test_agent_manager.build_agent(root_plot_directory=plotting_dir.name)
+            rand_agent = random_agent_manager.build_agent(root_plot_directory=plotting_dir.name)
+
+            test_agent.plot_directory = f"agent_{i_step * conf.evaluation_freq}"
+            rand_agent.plot_directory = f"opponent_{i_step * conf.evaluation_freq}"
+
+            reconchess.play_local_game(test_agent, rand_agent)
+
+    # Clean temporary plotting directory if wasn't cleaned previously ()
+    plotting_dir.cleanup()
 
 
 if __name__ == '__main__':
