@@ -91,6 +91,8 @@ def main():
     # Setup replay buffer
     replay_buffer = HistoryReplayBuffer(conf.replay_size, (8, 8, 13), tuple(), (4096, ))
     data_converter = functools.partial(convert_to_tensor, device=device)
+    # Slices representing data with move actions and sense action in the replay buffer
+    action_slices = [slice(1, None, 2), slice(0, None, 2)]
 
     # Trainable network
     q_net = TestQNet(conf.narx_memory_length, conf.n_hidden).to(device)
@@ -217,7 +219,7 @@ def main():
             info_dict = dict()
 
             # Sample Move data
-            data = replay_buffer.sample_batch(conf.batch_size, conf.narx_memory_length, "move")
+            data = replay_buffer.sample_batch(conf.batch_size, conf.narx_memory_length, action_slices)
             (
                 batch_obs,
                 batch_act,
