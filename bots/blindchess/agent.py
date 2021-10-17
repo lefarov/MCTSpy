@@ -29,15 +29,13 @@ class Transition:
     observation: np.ndarray
     action: int
     reward: float
-    action_opponent: int = -1
     done: float = 0.0
+    action_mask: np.ndarray = None
+    action_opponent: int = -1
 
     def __iter__(self):
-        yield self.observation
-        yield self.action
-        yield self.reward
-        yield self.action_opponent
-        yield self.done
+        for field in self.__dataclass_fields__:
+            yield getattr(self, field)
 
     @classmethod
     def stack(cls, transitions: t.Sequence):
@@ -378,9 +376,8 @@ class QAgent(PlayerWithBoardHistory):
 
         with torch.no_grad():
             # Compute state Value and Q-value for every sense action 
-            q_net_input = torch.as_tensor(
-                self.nanrx_memory, dtype=torch.float32, device=self.device
-            ).unsqueeze(0)  # Add the batch dim.
+            q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32, device=self.device)
+            q_net_input = q_net_input.unsqueeze(0)  # Add the batch dim.
            
             _, sense_q, *_ = self.q_net(q_net_input)
 
@@ -402,12 +399,15 @@ class QAgent(PlayerWithBoardHistory):
 
         with torch.no_grad():
             # Compute state Value and Q-value for every move action
-            q_net_input = torch.as_tensor(
-                self.nanrx_memory, dtype=torch.float32, device=self.device,
-            ).unsqueeze(0)  # Add the batch dim.
+            q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32, device=self.device)
+            q_net_input = q_net_input.unsqueeze(0)  # Add the batch dim.
 
             _, _, move_q, *_ = self.q_net(q_net_input)
             
+            # Compute move mask
+            move_mask = np.zeros_like(move_q.cpu().numpy())
+            move_mask[moves_indices] = 1.0
+
             move_index = self.policy_sampler(move_q.squeeze(0), moves_indices)
 
         # Convert index of an action to chess Move
@@ -420,7 +420,14 @@ class QAgent(PlayerWithBoardHistory):
 
         # assert move in set(move_actions)
 
-        self.history.append(Transition(board_to_onehot(self.board), move_index, reward=0))
+        self.history.append(
+            Transition(
+                board_to_onehot(self.board),
+                move_index,
+                reward=0,
+                action_mask=move_mask
+            )
+        )
 
         return move
 
@@ -539,9 +546,9 @@ class QAgentManager(BatchedAgentManager):
             self.q_net, self.policy_sampler, self.device, *args, **kwargs
         )
 
-    def choose_move_batched(self,
-                            agents: List[QAgent],
-                            move_action_lists: List[List[chess.Move]]) -> Optional[List[chess.Move]]:
+    def choose_move_batched(
+        self, agents: List[QAgent], move_action_lists: List[List[chess.Move]]
+    ) -> Optional[List[chess.Move]]:
 
         narx_memory_batch = self._build_narx_batch(agents)
 
@@ -554,6 +561,9 @@ class QAgentManager(BatchedAgentManager):
 
             # Transform chess Moves into their indices in action Space
             moves_indices = list(map(move_to_index, moves))
+            move_mask = np.zeros_like(move_q.cpu().numpy())
+            move_mask[moves_indices] = 1.0
+
             move_index = self.policy_sampler(move_q, moves_indices)
 
             # Convert index of an action to chess Move
@@ -565,15 +575,25 @@ class QAgentManager(BatchedAgentManager):
 
             # assert move in set(move_actions)
 
-            agent.history.append(Transition(board_to_onehot(agent.board), move_index, reward=0))
+            agent.history.append(
+                Transition(
+                    board_to_onehot(agent.board),
+                    move_index,
+                    reward=0,
+                    action_mask=move_mask,
+                )
+            )
 
             move_batch.append(move)
 
         return move_batch
 
-    def choose_sense_batched(self, agents: List[QAgent],
-                             sense_action_lists: List[List[Square]],
-                             move_action_lists: List[List[chess.Move]]) -> List[Optional[Square]]:
+    def choose_sense_batched(
+        self,
+        agents: List[QAgent],
+        sense_action_lists: List[List[Square]],
+        move_action_lists: List[List[chess.Move]]
+    ) -> List[Optional[Square]]:
 
         narx_memory_batch = self._build_narx_batch(agents)
 
