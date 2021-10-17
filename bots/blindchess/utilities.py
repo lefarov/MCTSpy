@@ -1,5 +1,5 @@
 import random
-import typing
+import torch
 import typing as t
 
 import chess
@@ -7,8 +7,6 @@ import numpy as np
 
 
 # Chess pieces values according to https://www.chess.com/terms/chess-piece-value
-import torch
-
 PIECE_VALUE = {
     chess.PAWN: 1/8,
     chess.KNIGHT: 3/8,
@@ -58,7 +56,7 @@ def board_to_index_encoding(board: chess.Board, piece_index=PIECE_INDEX):
     return board_index.reshape(8, 8)
 
 
-def board_state_to_index_encoding(board_state: chess._BoardState, piece_index: typing.Dict):
+def board_state_to_index_encoding(board_state: chess._BoardState, piece_index: t.Dict):
     board = chess.Board.empty()
     board_state.restore(board)
 
