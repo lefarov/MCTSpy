@@ -14,14 +14,14 @@ from torch.optim import Adam
 
 from bots.blindchess.play import DelegatingAgentManager, play_local_game_batched
 from bots.blindchess.buffer import HistoryReplayBuffer
-from bots.blindchess.losses import q_loss
+from bots.blindchess.losses import CombinedLoss
 from bots.blindchess.agent import (
-    TestQNet,
     QAgent,
     Transition,
     RandomBot,
     QAgentManager,
 )
+from bots.blindchess.networks import TestQNet
 from bots.blindchess.utilities import (
     move_proxy_reward, 
     capture_proxy_reward, 
@@ -108,9 +108,17 @@ def main():
 
         print(f"Stack size: {net_size}") 
 
+    # Losses definition
+    combined_loss_func = CombinedLoss(
+        model=q_net,
+        model_target=q_net_target,
+        opponent_loss=torch.nn.CrossEntropyLoss(),
+        discount=1.0,
+        double_q=True,
+        mask_q=True,
+        weights=conf.loss_weights,
+    )
 
-    # Opponent move loss
-    opponent_act_loss_func = torch.nn.CrossEntropyLoss()
     # Optimizer
     optimizer = Adam(q_net.parameters(), lr=conf.lr)
 
@@ -206,6 +214,8 @@ def main():
 
         print("Training.")
         for i_batch in range(conf.n_batches_per_step):
+            info_dict = dict()
+
             # Sample Move data
             data = replay_buffer.sample_batch(conf.batch_size, conf.narx_memory_length, "move")
             (
@@ -214,63 +224,32 @@ def main():
                 batch_rew,
                 batch_done,
                 batch_obs_next,
-                batch_act_opponent,
                 batch_act_mask,
+                batch_act_opponent,
              ) = map(data_converter, data)
 
             terminal_count = batch_done.count_nonzero().item()
 
-            # Compute opponent's loss
-            # TODO: can we do single prop through network?
-            # TODO: adjust TD error scaling
-            *_, pred_act_opponent = q_net(batch_obs)
-            opponent_act_loss = opponent_act_loss_func(
-                pred_act_opponent, batch_act_opponent.squeeze(-1)
-            )
-
-            total_loss = conf.loss_weights[0] * opponent_act_loss
-
-            # Compute Move loss
-            move_loss = q_loss(
-                q_selector(q_net, "move"),
-                q_selector(q_net_target, "move"),
+            # Compute Move loss and Opponent Move prediction Loss
+            total_loss = combined_loss_func(
                 batch_obs,
                 batch_act,
                 batch_rew,
-                batch_obs_next,
                 batch_done,
-                discount=conf.gamma
+                batch_obs_next,
+                batch_act_mask,
+                batch_act_opponent,
+                "move"
             )
-
-            total_loss += conf.loss_weights[1] * move_loss
 
             # Sample Sense data
             data = replay_buffer.sample_batch(conf.batch_size, conf.narx_memory_length, "sense")
-            (
-                batch_obs,
-                batch_act,
-                batch_rew,
-                batch_done,
-                batch_obs_next,
-                _,
-                batch_act_mask,
-             ) = map(data_converter, data)
+            data = tuple(map(data_converter, data))
 
-            terminal_count += batch_done.count_nonzero().item()
+            terminal_count += data[3].count_nonzero().item()
 
             # Compute Sense loss
-            sense_loss = q_loss(
-                q_selector(q_net, "sense"),
-                q_selector(q_net_target, "sense"),
-                batch_obs,
-                batch_act,
-                batch_rew,
-                batch_obs_next,
-                batch_done,
-                discount=conf.gamma,
-            )
-
-            total_loss += conf.loss_weights[2] * sense_loss
+            total_loss += combined_loss_func(*data, "sense")
 
             # Optimize the model
             optimizer.zero_grad()
