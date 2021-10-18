@@ -79,8 +79,8 @@ class CombinedLoss(torch.nn.Module):
     ):
         # Merge action type and batch dimension since torch.Conv3d
         # doesn't support "arbitrary-batched" semantics (WTF?).
-        obs = obs.flatten(0, 1)
-        obs_next = obs_next.flatten(0, 1)
+        obs = obs.view(-1, *self.obs_shape)
+        obs_next = obs_next.view(-1, *self.obs_shape)
 
         # Feedforward all data in batch through the trainable model.
         _, sense_q, move_q, pred_act_opponent = self.model(obs)
