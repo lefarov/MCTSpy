@@ -153,6 +153,8 @@ class PlayerWithBoardHistory(Player):
             # Currently, we only resign when going over the move limit. Both players take a penalty.
             reward = -1
 
+        # TODO: pass move action dimensionality 
+        self.history[-1].action_mask = np.ones(64*64)
         self.history[-1].reward = reward
         self.history[-1].done = 1.0
 
@@ -390,7 +392,7 @@ class QAgent(PlayerWithBoardHistory):
             sense_index = self.policy_sampler(sense_q.squeeze(0), list(range(64)))
 
         # Add mask to the previous transition with Move action
-        if history:
+        if self.history:
             self.history[-1].action_mask = move_mask
         
         self.history.append(
@@ -433,7 +435,7 @@ class QAgent(PlayerWithBoardHistory):
         # assert move in set(move_actions)
 
         # Add mask to the previous transition with Sense action
-        if history:
+        if self.history:
             self.history[-1].action_mask = np.ones(self.move_num)
         
         self.history.append(

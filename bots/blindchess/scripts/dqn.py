@@ -67,6 +67,7 @@ def main():
     # TODO: mirror the history.
     # TODO: think if we can use AlphaZero state value trick (overwrite all rewards with 1.)
     # TODO: add masks savings to the Random Bot
+    # TODO: what happens if we sample last transition? Do we have mask for it?
 
     wandb.init(
         project="blind_chess",
@@ -79,7 +80,8 @@ def main():
 
     plotting_dir = os.path.abspath(os.path.join(wandb.run.dir, os.pardir, "game"))
     if WANDB_MODE == "disabled":
-        plotting_dir = tempfile.TemporaryDirectory()
+        tempdir = tempfile.TemporaryDirectory()
+        plotting_dir = tempdir.name
     
     print(f"Root plotting direcotry: {plotting_dir}")
 
@@ -280,8 +282,8 @@ def main():
             wandb.log({"win_rate": win_rate / conf.n_test_games})
 
             # Play one more game to write the plots
-            test_agent = test_agent_manager.build_agent(root_plot_directory=plotting_dir.name)
-            rand_agent = random_agent_manager.build_agent(root_plot_directory=plotting_dir.name)
+            test_agent = test_agent_manager.build_agent(root_plot_directory=plotting_dir)
+            rand_agent = random_agent_manager.build_agent(root_plot_directory=plotting_dir)
 
             test_agent.plot_directory = f"agent_{i_step * conf.evaluation_freq}"
             rand_agent.plot_directory = f"opponent_{i_step * conf.evaluation_freq}"
@@ -289,7 +291,7 @@ def main():
             reconchess.play_local_game(test_agent, rand_agent)
 
     # Clean temporary plotting directory if wasn't cleaned previously ()
-    plotting_dir.cleanup()
+    tempdir.cleanup()
 
 
 if __name__ == '__main__':
