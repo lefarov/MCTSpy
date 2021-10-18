@@ -51,7 +51,7 @@ CONFIG = {
     "target_q_update": 500,
     "lr": 0.01,
     # Weights of opponent's move prediction, move td and sense td errors.
-    "loss_weights": (1e-7, 1., 1.),
+    "loss_weights": (1e-7, 0.5, 1.),
     "gamma": 1.0,
     "gradient_clip": 100,
 
@@ -67,7 +67,15 @@ def main():
     # TODO: mirror the history.
     # TODO: think if we can use AlphaZero state value trick (overwrite all rewards with 1.)
     # TODO: add masks savings to the Random Bot
-    # TODO: what happens if we sample last transition? Do we have mask for it?
+    # TODO: mask invalid en passant moves?
+
+    """
+    File "/home/max/projects/MCTSpy/bots/blindchess/agent.py", line 551, in _build_narx_batch
+    RuntimeError: CUDA error: unspecified launch failure
+    CUDA kernel errors might be asynchronously reported at some other API call,so the stacktrace below might be incorrect.
+    For debugging consider passing CUDA_LAUNCH_BLOCKING=1.
+    """
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
     wandb.init(
         project="blind_chess",
