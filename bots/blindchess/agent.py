@@ -16,6 +16,7 @@ from reconchess import (
     Square,
     GameHistory,
     WinReason,
+    history,
 )
 
 from bots.blindchess.utilities import index_to_move, move_to_index, board_to_onehot
@@ -374,6 +375,11 @@ class QAgent(PlayerWithBoardHistory):
         # Add latest state of observation to the NARX memory
         self.add_to_memory(board_to_onehot(self.board))
 
+        # Compute moves mask
+        moves_indices = list(map(move_to_index, move_actions))
+        move_mask = np.zeros(self.move_num)
+        move_mask[moves_indices] = 1.0
+
         with torch.no_grad():
             # Compute state Value and Q-value for every sense action 
             q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32, device=self.device)
@@ -383,13 +389,12 @@ class QAgent(PlayerWithBoardHistory):
 
             sense_index = self.policy_sampler(sense_q.squeeze(0), list(range(64)))
 
+        # Add mask to the previous transition with Move action
+        if history:
+            self.history[-1].action_mask = move_mask
+        
         self.history.append(
-            Transition(
-                board_to_onehot(self.board),
-                sense_index,
-                reward=0,
-                action_mask=np.ones(self.move_num),
-            )
+            Transition(board_to_onehot(self.board), sense_index, reward=0)
         )
 
         return sense_actions[sense_index]
@@ -427,13 +432,12 @@ class QAgent(PlayerWithBoardHistory):
 
         # assert move in set(move_actions)
 
+        # Add mask to the previous transition with Sense action
+        if history:
+            self.history[-1].action_mask = np.ones(self.move_num)
+        
         self.history.append(
-            Transition(
-                board_to_onehot(self.board),
-                move_index,
-                reward=0,
-                action_mask=move_mask
-            )
+            Transition(board_to_onehot(self.board), move_index, reward=0,)
         )
 
         return move
@@ -487,14 +491,11 @@ class QAgentManager(BatchedAgentManager):
                 move = None
 
             # assert move in set(move_actions)
+            if agent.history:
+                agent.history[-1].action_mask = np.ones(agent.move_num)
 
             agent.history.append(
-                Transition(
-                    board_to_onehot(agent.board),
-                    move_index,
-                    reward=0,
-                    action_mask=move_mask,
-                )
+                Transition(board_to_onehot(agent.board), move_index, reward=0)
             )
 
             move_batch.append(move)
@@ -515,16 +516,21 @@ class QAgentManager(BatchedAgentManager):
             _, sense_q_batch, *_ = self.q_net(narx_memory_batch)
 
         sense_batch = []
-        for agent, senses, sense_q in zip(agents, sense_action_lists, sense_q_batch):
+        for agent, senses, sense_q, moves in zip(
+            agents, sense_action_lists, sense_q_batch, move_action_lists
+        ):
             sense_index = agent.policy_sampler(sense_q, list(range(64)))
 
+            # Compute move mask
+            moves_indices = list(map(move_to_index, moves))
+            move_mask = np.zeros(agent.move_num)
+            move_mask[moves_indices] = 1.0
+
+            if agent.history:
+                agent.history[-1].action_mask = move_mask
+
             agent.history.append(
-                Transition(
-                    board_to_onehot(agent.board),
-                    sense_index,
-                    reward=0,
-                    action_mask=np.ones(agent.move_num),
-                )
+                Transition(board_to_onehot(agent.board), sense_index, reward=0)
             )
 
             sense_batch.append(senses[sense_index])

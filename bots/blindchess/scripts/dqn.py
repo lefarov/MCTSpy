@@ -31,7 +31,7 @@ from bots.blindchess.utilities import (
 )
 
 # Available options are "online", "offline" or "disabled"
-WANDB_MODE = "disabled"
+WANDB_MODE = "online"
 
 CONFIG = {
     "narx_memory_length": 50,
@@ -41,8 +41,8 @@ CONFIG = {
     "n_hidden": 64,
     "n_steps": 5000,
     "n_batches_per_step": 10,
-    "n_games_per_step": 1,
-    "n_test_games": 1,
+    "n_games_per_step": 128,
+    "n_test_games": 128,
     
     "evaluation_freq": 100,
     "game_batch_size": 128,
@@ -66,6 +66,7 @@ def main():
     # TODO: Implement sampling of the colors.
     # TODO: mirror the history.
     # TODO: think if we can use AlphaZero state value trick (overwrite all rewards with 1.)
+    # TODO: add masks savings to the Random Bot
 
     wandb.init(
         project="blind_chess",

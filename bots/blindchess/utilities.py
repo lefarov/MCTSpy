@@ -100,7 +100,7 @@ def sense_proxy_reward(piece: chess.Piece, weight=0.0):
 def egreedy_masked_policy_sampler(
     q_values: torch.Tensor,
     valid_action_indices,
-    mask_invalid_actions=False,
+    mask_invalid_actions=True,
     eps: float = 0.05
 ) -> int:
 
