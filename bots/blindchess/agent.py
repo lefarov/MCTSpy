@@ -410,12 +410,13 @@ class QAgent(PlayerWithBoardHistory):
             q_net_input = q_net_input.unsqueeze(0)  # Add the batch dim.
 
             _, _, move_q, *_ = self.q_net(q_net_input)
-            
+            move_q = move_q.squeeze(0)
+
             # Compute move mask
             move_mask = np.zeros_like(move_q.cpu().numpy())
             move_mask[moves_indices] = 1.0
 
-            move_index = self.policy_sampler(move_q.squeeze(0), moves_indices)
+            move_index = self.policy_sampler(move_q, moves_indices)
 
         # Convert index of an action to chess Move
         move = index_to_move(move_index)
@@ -423,7 +424,6 @@ class QAgent(PlayerWithBoardHistory):
             # TODO: what should we do with underpomotions
             # move.promotion = chess.QUEEN
             move = None
-
 
         # assert move in set(move_actions)
 

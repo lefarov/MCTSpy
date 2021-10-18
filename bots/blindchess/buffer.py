@@ -141,7 +141,7 @@ class HistoryReplayBuffer:
         ) = self._allocate_batches(batch_size, slice_length, len(action_type_slices))
 
         # Iterate over action types
-        for action_i, action_type_slice in enumerate(action_type_slices):
+        for i_action, action_type_slice in enumerate(action_type_slices):
 
             # Sample `batch_size` of history indices proportional to their length
             history_weights = [h[1] - h[0] for h in self.history_indices]
@@ -161,13 +161,13 @@ class HistoryReplayBuffer:
                 obs_next_slice = self.index_to_obs_sample(index + 1, history[0], slice_length)
 
                 # Write data to batches
-                obs_batch[action_i, i, ...] = obs_slice
-                act_batch[action_i, i, ...] = self.act_data[index]
-                rew_batch[action_i, i, ...] = self.rew_data[index]
-                done_batch[action_i, i, ...] = self.done_data[index]
-                obs_next_batch[action_i, i, ...] = obs_next_slice
-                act_next_mask_batch[action_i, i, ...] = self.act_next_mask_data[index]
-                act_opponent_batch[action_i, i, ...] = self.act_opponent_data[index]
+                obs_batch[i_action, i, ...] = obs_slice
+                act_batch[i_action, i, ...] = self.act_data[index]
+                rew_batch[i_action, i, ...] = self.rew_data[index]
+                done_batch[i_action, i, ...] = self.done_data[index]
+                obs_next_batch[i_action, i, ...] = obs_next_slice
+                act_next_mask_batch[i_action, i, ...] = self.act_next_mask_data[index]
+                act_opponent_batch[i_action, i, ...] = self.act_opponent_data[index]
 
         return (
             obs_batch,

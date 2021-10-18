@@ -26,8 +26,7 @@ from bots.blindchess.utilities import (
     move_proxy_reward, 
     capture_proxy_reward, 
     sense_proxy_reward, 
-    egreedy_masked_policy_sampler, 
-    q_selector, 
+    egreedy_masked_policy_sampler,
     convert_to_tensor,
 )
 
@@ -37,7 +36,7 @@ WANDB_MODE = "disabled"
 CONFIG = {
     "narx_memory_length": 50,
     "replay_size": 50000,
-    "batch_size": 1024,
+    "batch_size": 512,
     
     "n_hidden": 64,
     "n_steps": 5000,
@@ -62,10 +61,9 @@ CONFIG = {
 
 
 def main():
-    # TODO: Implement return estimation as in Apex-DQN.
+    # TODO: Implement return estimation as in Apex-DQN (GAE).
     # TODO: Implement prioritized replay.
     # TODO: Implement sampling of the colors.
-    # TODO: make Q-network as an torch module.
     # TODO: mirror the history.
     # TODO: think if we can use AlphaZero state value trick (overwrite all rewards with 1.)
 
@@ -92,7 +90,7 @@ def main():
     replay_buffer = HistoryReplayBuffer(conf.replay_size, (8, 8, 13), tuple(), (4096, ))
     data_converter = functools.partial(convert_to_tensor, device=device)
     # Slices representing data with move actions and sense action in the replay buffer
-    action_slices = [slice(1, None, 2), slice(0, None, 2)]
+    action_slices = [slice(0, None, 2), slice(1, None, 2)]
 
     # Trainable network
     q_net = TestQNet(conf.narx_memory_length, conf.n_hidden).to(device)
@@ -218,7 +216,7 @@ def main():
         for i_batch in range(conf.n_batches_per_step):
             info_dict = dict()
 
-            # Sample Move data
+            # Sample Combined data
             data = replay_buffer.sample_batch(conf.batch_size, conf.narx_memory_length, action_slices)
             (
                 batch_obs,
@@ -226,11 +224,12 @@ def main():
                 batch_rew,
                 batch_done,
                 batch_obs_next,
-                batch_act_mask,
+                batch_act_next_mask,
                 batch_act_opponent,
              ) = map(data_converter, data)
 
             terminal_count = batch_done.count_nonzero().item()
+            info_dict["terminal_fraction"] = terminal_count / conf.batch_size
 
             # Compute Move loss and Opponent Move prediction Loss
             total_loss = combined_loss_func(
@@ -239,32 +238,20 @@ def main():
                 batch_rew,
                 batch_done,
                 batch_obs_next,
-                batch_act_mask,
+                batch_act_next_mask,
                 batch_act_opponent,
-                "move"
+                info_dict
             )
 
-            # Sample Sense data
-            data = replay_buffer.sample_batch(conf.batch_size, conf.narx_memory_length, "sense")
-            data = tuple(map(data_converter, data))
-
-            terminal_count += data[3].count_nonzero().item()
-
-            # Compute Sense loss
-            total_loss += combined_loss_func(*data, "sense")
+            info_dict["total_loss"] = total_loss
 
             # Optimize the model
             optimizer.zero_grad()
             total_loss.backward()
             optimizer.step()
 
-            wandb.log({
-                "total_loss": total_loss,
-                "move_loss": move_loss,
-                "sense_loss": sense_loss,
-                "opponent_act_loss": opponent_act_loss,
-                "terminal_fraction": terminal_count / conf.batch_size,
-            })
+            # Log training Info dict
+            wandb.log(info_dict)
 
         # Clone target network with specified frequency
         if i_step % conf.target_q_update == 0:
