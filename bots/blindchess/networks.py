@@ -87,10 +87,17 @@ class TestQNet(torch.nn.Module):
 
         return state_value, sense_q, move_q, opponent_move
 
-    def backbone(self, boar_memory: torch.Tensor):
+    def backbone(self, board_memory: torch.Tensor):
         # Re-align board memory to fit the shape described in init
         # (B, T, H, W, C) -> (B, C, T, H, W)
-        board_encoding = boar_memory.permute(0, 4, 1, 2, 3)
+        if board_memory.ndim == 5:
+            board_encoding = board_memory.permute(0, 4, 1, 2, 3)
+        # If we do have one leading dimension for action type in a batch
+        elif board_memory.ndim == 6:
+            board_encoding = board_memory.permute(0, 1, 5, 2, 3, 4)
+        else:
+            raise ValueError(f"Unsupported number of dimensions for board memory: {board_memory.ndim}")
+
         board_encoding = self.conv_stack(board_encoding)
         board_encoding = torch.flatten(board_encoding, start_dim=1)
         board_encoding = self.fc_stack(board_encoding)
