@@ -83,6 +83,7 @@ def play_local_game_batched(white_manager: BatchedAgentManager,
 
         # Start new matches to fill up the batch.
         while len(matches_in_progress) < min(batch_size, total_number - len(match_results)):
+            # TODO: insert predefined amount of moves when creating the game
             game = LocalGame(seconds_per_player=seconds_per_player)
             white_player = white_manager.build_agent()
             black_player = black_manager.build_agent()

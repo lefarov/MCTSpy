@@ -34,7 +34,7 @@ from bots.blindchess.utilities import (
 WANDB_MODE = "online"
 
 CONFIG = {
-    "narx_memory_length": 5,
+    "narx_memory_length": 1,
     "replay_size": 50000,
     "batch_size": 512,
     

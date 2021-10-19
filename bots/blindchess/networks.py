@@ -45,8 +45,8 @@ class TestQNet(torch.nn.Module):
             torch.nn.Conv3d(
                 in_channels=len(PIECE_INDEX),
                 out_channels=64,
-                kernel_size=(5, 5, 5),
-                stride=(3, 3, 3)
+                kernel_size=(1, 5, 5),
+                stride=(1, 3, 3)
             ),
             torch.nn.ReLU(),
             # torch.nn.Conv3d(
