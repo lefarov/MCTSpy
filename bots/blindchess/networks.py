@@ -16,9 +16,9 @@ class TestQNet(torch.nn.Module):
         self.channels_per_layer = channels_per_layer or [64, 128, 256]
 
         # Board convolution backbone:
-        # 3D convolution layer is applied to a thensor with shape (N,C​,D​,H​,W​)
+        # 3D convolution layer is applied to a tensor with shape (N,C​,D​,H​,W​)
         # where N - batch size, C (channels) - one-hot-encoding of a piece,
-        # D (depth) - history length, H and W are board dimentions (i.e. 8x8).
+        # D (depth) - history length, H and W are board dimensions (i.e. 8x8).
 
         self.conv_stack = torch.nn.Sequential(
             # torch.nn.Conv3d(
