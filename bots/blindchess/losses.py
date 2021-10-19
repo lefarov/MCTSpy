@@ -118,11 +118,11 @@ class CombinedLoss(torch.nn.Module):
         # Compute Q-loss for sense action
         sense_loss = q_loss(
             sense_q[self.sense_ind],
-            sense_q_next[self.sense_ind],
+            move_q_next[self.sense_ind],
             act[self.sense_ind].unsqueeze(-1),
             rew[self.sense_ind].unsqueeze(-1),
             done[self.sense_ind].unsqueeze(-1),
-            sense_q_next_estimate[self.sense_ind] if self.double_q else None,
+            move_q_next_estimate[self.sense_ind] if self.double_q else None,
             self.discount,
         )
 
@@ -132,15 +132,17 @@ class CombinedLoss(torch.nn.Module):
         # Compute Q-loss for move action
         move_loss = q_loss(
             move_q[self.move_ind],
-            move_q_next[self.move_ind],
+            sense_q_next[self.move_ind],
             act[self.move_ind].unsqueeze(-1),
             rew[self.move_ind].unsqueeze(-1),
             done[self.move_ind].unsqueeze(-1),
-            move_q_next_estimate[self.move_ind] if self.double_q else None,
+            sense_q_next_estimate[self.move_ind] if self.double_q else None,
             self.discount,
         )
 
         info_dict["move_loss"] = move_loss
         loss += self.weights[2] * move_loss
+
+        info_dict["total_loss"] = loss
 
         return loss

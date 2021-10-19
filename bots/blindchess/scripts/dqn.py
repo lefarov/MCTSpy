@@ -34,26 +34,28 @@ from bots.blindchess.utilities import (
 WANDB_MODE = "online"
 
 CONFIG = {
-    "narx_memory_length": 50,
+    "narx_memory_length": 5,
     "replay_size": 50000,
     "batch_size": 512,
     
     "n_hidden": 64,
     "n_steps": 5000,
-    "n_batches_per_step": 10,
+    "n_batches_per_step": 50,
     "n_games_per_step": 128,
     "n_test_games": 128,
     
-    "evaluation_freq": 100,
+    "evaluation_freq": 10,
     "game_batch_size": 128,
     
     # Frequency for updating target Q network
-    "target_q_update": 500,
+    "target_q_update": 1,
     "lr": 0.01,
-    # Weights of opponent's move prediction, move td and sense td errors.
+    # Weights of opponent's move prediction, sense TD and move TD errors.
     "loss_weights": (1e-7, 0.5, 1.),
     "gamma": 1.0,
     "gradient_clip": 100,
+    "double_q": True,
+    "mask_q": True,
 
     # Set to 0. if don't want to propagate terminal reward.
     "reward_decay_factor": 1.05,  # 1.05
@@ -124,9 +126,10 @@ def main():
         model=q_net,
         model_target=q_net_target,
         opponent_loss=torch.nn.CrossEntropyLoss(),
-        discount=1.0,
-        double_q=True,
-        mask_q=True,
+        memory_length=conf.narx_memory_length,
+        discount=conf.gamma,
+        double_q=conf.double_q,
+        mask_q=conf.mask_q,
         weights=conf.loss_weights,
     )
 
@@ -206,7 +209,7 @@ def main():
             if conf.reward_decay_factor != 0.0:
                 length = max(len(white_player.history), len(black_player.history))
                 
-                for i in range(-1, -length -1, -1):
+                for i in range(-2, -length -1, -1):
                     try:
                         discout = (conf.reward_decay_factor ** i)
                         white_player.history[i-1].reward += white_player.history[i].reward * discout
@@ -253,8 +256,6 @@ def main():
                 batch_act_opponent,
                 info_dict
             )
-
-            info_dict["total_loss"] = total_loss
 
             # Optimize the model
             optimizer.zero_grad()

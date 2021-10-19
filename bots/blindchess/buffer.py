@@ -34,7 +34,7 @@ class HistoryReplayBuffer:
         # Data for the opponents' moves
         self.act_opponent_data = np.empty((size, *act_shape), dtype=act_dtype)
         # Data for available moves
-        self.act_next_mask_data = np.empty((size, *act_mask_shape), dtype=np.float32)
+        self.act_mask_data = np.empty((size, *act_mask_shape), dtype=np.float32)
 
         self.history_indices = deque()
 
@@ -82,7 +82,7 @@ class HistoryReplayBuffer:
         self.done_data[loc:loc + length] = history.done
 
         self.act_opponent_data[loc:loc + length] = history.action_opponent
-        self.act_next_mask_data[loc:loc + length] = history.action_mask
+        self.act_mask_data[loc:loc + length] = history.action_mask
 
         self.history_indices.appendleft((loc, loc + length))
         self.history_indices.rotate(-1)
@@ -166,7 +166,7 @@ class HistoryReplayBuffer:
                 rew_batch[i_action, i, ...] = self.rew_data[index]
                 done_batch[i_action, i, ...] = self.done_data[index]
                 obs_next_batch[i_action, i, ...] = obs_next_slice
-                act_next_mask_batch[i_action, i, ...] = self.act_next_mask_data[index]
+                act_next_mask_batch[i_action, i, ...] = self.act_mask_data[index + 1]
                 act_opponent_batch[i_action, i, ...] = self.act_opponent_data[index]
 
         return (

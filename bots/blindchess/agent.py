@@ -153,10 +153,20 @@ class PlayerWithBoardHistory(Player):
             # Currently, we only resign when going over the move limit. Both players take a penalty.
             reward = -1
 
-        # TODO: pass move action dimensionality 
-        self.history[-1].action_mask = np.ones(64*64)
+        # Add reward 
         self.history[-1].reward = reward
-        self.history[-1].done = 1.0
+
+        # Append last dummy transition to correctly handle the reward sampling
+        self.history.append(
+            Transition(
+                board_to_onehot(self.board),
+                action=-1,
+                reward=0.0,
+                done=1.0,
+                # TODO: pass move action dimensionality 
+                action_mask=np.ones(64*64)
+            )
+        )
 
         self.save_board_to_svg()
 
@@ -377,11 +387,6 @@ class QAgent(PlayerWithBoardHistory):
         # Add latest state of observation to the NARX memory
         self.add_to_memory(board_to_onehot(self.board))
 
-        # Compute moves mask
-        moves_indices = list(map(move_to_index, move_actions))
-        move_mask = np.zeros(self.move_num)
-        move_mask[moves_indices] = 1.0
-
         with torch.no_grad():
             # Compute state Value and Q-value for every sense action 
             q_net_input = torch.as_tensor(self.nanrx_memory, dtype=torch.float32, device=self.device)
@@ -390,13 +395,14 @@ class QAgent(PlayerWithBoardHistory):
             _, sense_q, *_ = self.q_net(q_net_input)
 
             sense_index = self.policy_sampler(sense_q.squeeze(0), list(range(64)))
-
-        # Add mask to the previous transition with Move action
-        if self.history:
-            self.history[-1].action_mask = move_mask
         
         self.history.append(
-            Transition(board_to_onehot(self.board), sense_index, reward=0)
+            Transition(
+                board_to_onehot(self.board),
+                sense_index,
+                reward=0,
+                action_mask=np.ones(self.move_num)
+            )
         )
 
         return sense_actions[sense_index]
@@ -433,13 +439,14 @@ class QAgent(PlayerWithBoardHistory):
             move = None
 
         # assert move in set(move_actions)
-
-        # Add mask to the previous transition with Sense action
-        if self.history:
-            self.history[-1].action_mask = np.ones(self.move_num)
         
         self.history.append(
-            Transition(board_to_onehot(self.board), move_index, reward=0,)
+            Transition(
+                board_to_onehot(self.board),
+                move_index,
+                reward=0.0,
+                action_mask=move_mask
+            )
         )
 
         return move
@@ -492,12 +499,13 @@ class QAgentManager(BatchedAgentManager):
                 # move.promotion = chess.QUEEN
                 move = None
 
-            # assert move in set(move_actions)
-            if agent.history:
-                agent.history[-1].action_mask = np.ones(agent.move_num)
-
             agent.history.append(
-                Transition(board_to_onehot(agent.board), move_index, reward=0)
+                Transition(
+                    board_to_onehot(agent.board),
+                    move_index,
+                    reward=0.0,
+                    action_mask=move_mask
+                )
             )
 
             move_batch.append(move)
@@ -518,21 +526,16 @@ class QAgentManager(BatchedAgentManager):
             _, sense_q_batch, *_ = self.q_net(narx_memory_batch)
 
         sense_batch = []
-        for agent, senses, sense_q, moves in zip(
-            agents, sense_action_lists, sense_q_batch, move_action_lists
-        ):
+        for agent, senses, sense_q in zip(agents, sense_action_lists, sense_q_batch):
             sense_index = agent.policy_sampler(sense_q, list(range(64)))
 
-            # Compute move mask
-            moves_indices = list(map(move_to_index, moves))
-            move_mask = np.zeros(agent.move_num)
-            move_mask[moves_indices] = 1.0
-
-            if agent.history:
-                agent.history[-1].action_mask = move_mask
-
             agent.history.append(
-                Transition(board_to_onehot(agent.board), sense_index, reward=0)
+                Transition(
+                    board_to_onehot(agent.board),
+                    sense_index,
+                    reward=0.0,
+                    action_mask=np.ones(agent.move_num)
+                )
             )
 
             sense_batch.append(senses[sense_index])
