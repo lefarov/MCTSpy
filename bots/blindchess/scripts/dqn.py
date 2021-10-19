@@ -48,10 +48,10 @@ CONFIG = {
     "game_batch_size": 128,
     
     # Frequency for updating target Q network
-    "target_q_update": 1,
+    "target_q_update": 10,
     "lr": 0.01,
     # Weights of opponent's move prediction, sense TD and move TD errors.
-    "loss_weights": (1e-7, 0.5, 1.),
+    "loss_weights": (1e-7, 1., 1.),
     "gamma": 1.0,
     "gradient_clip": 100,
     "double_q": True,
@@ -151,7 +151,7 @@ def main():
 
     train_agent_manager = QAgentManager(
         q_net,
-        functools.partial(egreedy_masked_policy_sampler, eps=0.2),
+        functools.partial(egreedy_masked_policy_sampler, eps=0.8),
         device,
         q_agent_factory,
     )
