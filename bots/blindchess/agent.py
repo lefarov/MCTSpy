@@ -156,16 +156,17 @@ class PlayerWithBoardHistory(Player):
 
         # Add reward 
         self.history[-1].reward = reward
+        self.history[-1].done = 1.0
 
         # Append last dummy transition to correctly handle the reward sampling
         self.history.append(
             Transition(
                 board_to_onehot(self.board),
-                action=-1,
+                action=0,  # Some valid action, not important.
                 reward=0.0,
-                done=1.0,
+                done=0.0,
                 # TODO: pass move action dimensionality 
-                action_mask=np.ones(64*64)
+                action_mask=np.ones(64*64),
             )
         )
 

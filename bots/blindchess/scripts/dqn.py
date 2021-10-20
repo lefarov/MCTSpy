@@ -40,13 +40,14 @@ CONFIG = {
     
     "n_hidden": 64,
     "n_steps": 5000,
-    "n_batches_per_step": 50,
+    "n_batches_per_step": 16,
     "n_games_per_step": 128,
     "n_test_games": 128,
     
     "evaluation_freq": 10,
     "game_batch_size": 128,
-    
+
+    "eps_greedy_train": 0.8,
     # Frequency for updating target Q network
     "target_q_update": 10,
     "lr": 0.01,
@@ -161,7 +162,7 @@ def main():
 
     train_agent_manager = QAgentManager(
         q_net,
-        functools.partial(egreedy_masked_policy_sampler, eps=0.8),
+        functools.partial(egreedy_masked_policy_sampler, eps=CONFIG['eps_greedy_train']),
         device,
         q_agent_factory,
     )
@@ -198,11 +199,14 @@ def main():
         # Process the game results
         for _, _, _, white_player, black_player in results:
             
+            # Use zero as a dummy action. (A valid action is needed.)
+            # TODO: Instead, we shouldn't train the opponent move head at the terminal transition.
+            dummy_action = 0
             # Zipper that will iterate until the end of the longest sequence and
             # pad missing data of shorter sequences with the transitions containing
             # default opponent action as the recorded action.
             padded_zipper = functools.partial(
-                itertools.zip_longest, fillvalue=Transition(None, -1, None)
+                itertools.zip_longest, fillvalue=Transition(None, dummy_action, None)
             )
 
             # Iterate over 3 transitions windows: (1) with Move actions of the white player
