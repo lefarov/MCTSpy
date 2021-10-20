@@ -1,5 +1,6 @@
 import random
 import torch
+import math
 import typing as t
 
 import chess
@@ -152,3 +153,7 @@ def convert_to_tensor(array: np.ndarray, device) -> torch.Tensor:
         tensor = tensor.long()
 
     return tensor.to(device)
+
+
+def cosine_annealing(min_value, base_value, i, t_max):
+    return min_value + (base_value - min_value) * (1 + math.cos(math.pi * i / t_max)) / 2
