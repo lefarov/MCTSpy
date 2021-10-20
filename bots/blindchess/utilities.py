@@ -89,7 +89,7 @@ def move_proxy_reward(taken_move, requested_move):
     return 0.0
 
 
-def capture_proxy_reward(piece: chess.Piece, lost: bool, weight=0.0):
+def capture_proxy_reward(piece: chess.Piece, lost: bool, weight=0.05):
     # If Opponent captured your piece.
     if lost:
         # Return negative piece value multiplied by the importance weight of sense action.
