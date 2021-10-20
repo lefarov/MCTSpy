@@ -225,7 +225,7 @@ class RandomBot(PlayerWithBoardHistory):
 
         # Transform chess Moves into their indices in action Space
         moves_indices = list(map(move_to_index, map(mirror_move, move_actions)))
-        move_mask = np.zeros_like(np.ones(64 * 64).numpy())
+        move_mask = np.zeros_like(np.ones(64 * 64))
         move_mask[moves_indices] = 1.0
         
         self.history_mirrored.append(
@@ -522,7 +522,7 @@ class QAgentManager(BatchedAgentManager):
 
             # Convert index of an action to chess Move
             move = index_to_move(move_index)
-            if move not in move_action_lists:
+            if move not in moves:
                 # TODO: what should we do with under-promotions
                 # move.promotion = chess.QUEEN
                 move = None
