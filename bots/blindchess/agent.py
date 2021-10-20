@@ -19,7 +19,7 @@ from reconchess import (
     history,
 )
 
-from bots.blindchess.utilities import index_to_move, move_to_index, board_to_onehot
+from bots.blindchess.utilities import index_to_move, move_to_index, board_to_onehot, mirror_move
 from bots.blindchess.play import BatchedAgentManager
 
 
@@ -70,6 +70,7 @@ class PlayerWithBoardHistory(Player):
         self._plot_index = 0
 
         self.history = []  # type: t.List[Transition]
+        self.history_mirrored = []  # type: t.List[Transition]
 
     @property
     def plot_directory(self):
@@ -195,7 +196,16 @@ class RandomBot(PlayerWithBoardHistory):
         seconds_left: float
     ) -> t.Optional[Square]:
         sense = random.choice(sense_actions)
-        self.history.append(Transition(board_to_onehot(self.board), sense, reward=0))
+        self.history.append(Transition(board_to_onehot(self.board), sense, reward=0.0))
+        # Append mirrored transition
+        self.history_mirrored.append(
+            Transition(
+                board_to_onehot(self.board.mirror()),
+                chess.square_mirror(sense),
+                reward=0.0,
+                action_mask=np.ones(64 * 64)
+            )
+        )
 
         return sense
 
@@ -207,6 +217,24 @@ class RandomBot(PlayerWithBoardHistory):
         move = random.choice(move_actions)
         self.history.append(
             Transition(board_to_onehot(self.board), move_to_index(move), reward=0)
+        )
+
+        # TODO: find better way to mirrow moves
+        # Append mirrored transition
+        move_mirrored = mirror_move(move)
+
+        # Transform chess Moves into their indices in action Space
+        moves_indices = list(map(move_to_index, map(mirror_move, move_actions)))
+        move_mask = np.zeros_like(np.ones(64 * 64).numpy())
+        move_mask[moves_indices] = 1.0
+        
+        self.history_mirrored.append(
+            Transition(
+                board_to_onehot(self.board.mirror()),
+                move_mirrored,
+                reward=0.0,
+                action_mask=move_mask
+            )
         )
 
         return move

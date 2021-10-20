@@ -70,6 +70,13 @@ def fen_to_index_encoding(fen, piece_index=PIECE_INDEX):
     return board_to_index_encoding(board, piece_index)
 
 
+def mirror_move(move: chess.Move) -> chess.Move:
+    return chess.Move(
+        from_square=chess.square_mirror(move.from_square),
+        to_square=chess.square_mirror(move.to_square),
+    )
+
+
 def move_proxy_reward(taken_move, requested_move):
     # If invalid move was selected
     if taken_move is None:

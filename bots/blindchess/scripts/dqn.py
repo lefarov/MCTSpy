@@ -51,15 +51,25 @@ CONFIG = {
     "target_q_update": 10,
     "lr": 0.01,
     # Weights of opponent's move prediction, sense TD and move TD errors.
-    "loss_weights": (1e-7, 1., 1.),
+    "loss_weights": (0.0, 1.0, 1.0),  # (1e-7, 1., 1.)
     "gamma": 1.0,
     "gradient_clip": 100,
     "double_q": True,
     "mask_q": True,
 
     # Set to 0. if don't want to propagate terminal reward.
-    "reward_decay_factor": 1.05,  # 1.05
+    "reward_decay_factor": 0.0,  # 1.05
 }
+
+
+# Shapes
+OBS_SHAPE = (8, 8, 13)
+ACT_SHAPE = tuple()
+MASK_SHAPE = (64 * 64,)
+
+# Slices used to get sense and move data from the continuous history
+SENSE_DATA_SLICE = slice(0, None, 2)
+MOVE_DATA_SLICE = slice(1, None, 2)
 
 
 def main():
@@ -100,10 +110,10 @@ def main():
         device = torch.device("cuda")
 
     # Setup replay buffer
-    replay_buffer = HistoryReplayBuffer(conf.replay_size, (8, 8, 13), tuple(), (4096, ))
+    replay_buffer = HistoryReplayBuffer(conf.replay_size, OBS_SHAPE, ACT_SHAPE, MASK_SHAPE)
     data_converter = functools.partial(convert_to_tensor, device=device)
     # Slices representing data with move actions and sense action in the replay buffer
-    action_slices = [slice(0, None, 2), slice(1, None, 2)]
+    action_slices = (SENSE_DATA_SLICE, MOVE_DATA_SLICE)
 
     # Trainable network
     q_net = TestQNet(conf.narx_memory_length, conf.n_hidden).to(device)
