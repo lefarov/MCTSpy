@@ -49,6 +49,13 @@ CONFIG = {
     "evaluation_freq": 10,
     "game_batch_size": 128,
 
+    # Frequency for updating target Q network
+    "target_q_update": 10,
+    "lr": 0.01,
+
+    # Set to 0. if don't want to propagate terminal reward.
+    "reward_decay_factor": 0.0,  # 1.05
+
     # Exploration
     "exploration": {
         "eps_base": 0.8,
@@ -57,18 +64,15 @@ CONFIG = {
         "schedule": [0.5, 0.7, 0.9],
     },
 
-    # Frequency for updating target Q network
-    "target_q_update": 10,
-    "lr": 0.01,
-    # Weights of opponent's move prediction, sense TD and move TD errors.
-    "loss_weights": (0.0, 1.0, 1.0),  # (1e-7, 1., 1.)
-    "gamma": 1.0,
-    "gradient_clip": 100,
-    "double_q": True,
-    "mask_q": True,
-
-    # Set to 0. if don't want to propagate terminal reward.
-    "reward_decay_factor": 0.0,  # 1.05
+    # Defintion of the loss
+    "loss": {
+        # Weights of opponent's move prediction, sense TD and move TD errors.
+        "weights": (0.0, 1.0, 1.0),  # (1e-7, 1., 1.)
+        "discount": 1.0,
+        "double_q": True,
+        # Mask Q values for the next observation in TD error.
+        "mask_q": True,
+    },
 }
 
 
@@ -147,17 +151,11 @@ def main():
         model_target=q_net_target,
         opponent_loss=torch.nn.CrossEntropyLoss(),
         memory_length=conf.narx_memory_length,
-        discount=conf.gamma,
-        double_q=conf.double_q,
-        mask_q=conf.mask_q,
-        weights=conf.loss_weights,
+        **conf.loss
     )
 
-    annealed_eps_scheduler = EpsScheduler(
-        t_max=conf.n_steps,
-        **conf.exploration
-    )
-
+    # Exploration schedulers
+    annealed_eps_scheduler = EpsScheduler(t_max=conf.n_steps, **conf.exploration)
     testing_eps_scheduler = EpsScheduler.constant_eps(0.0)
 
     # Optimizer
