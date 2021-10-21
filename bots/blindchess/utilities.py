@@ -157,3 +157,68 @@ def convert_to_tensor(array: np.ndarray, device) -> torch.Tensor:
 
 def cosine_annealing(min_value, base_value, i, t_max):
     return min_value + (base_value - min_value) * (1 + math.cos(math.pi * i / t_max)) / 2
+
+
+class EpsScheduler:
+
+    def __init__(
+        self, eps_base, eps_min, t_max, base_multiplier=1.0, schedule: list=None
+    ) -> None:
+        self.eps_base = eps_base
+        self.eps_min = eps_min
+        self.t_max = t_max
+        self.base_multiplier = base_multiplier
+        
+        self.schedule = schedule or list()
+        self.schedule += [1.0]
+        self.schedule = list(map(lambda t: t * t_max, self.schedule))
+
+        self.reset()
+    
+    @property
+    def eps(self):
+        return self._eps
+
+    @eps.setter
+    def eps(self, current_eps):
+        self._eps = current_eps
+
+    def reset(self):
+        self.eps = self.eps_base
+
+        self.schedule_in_progress = self.schedule.copy()
+        self.last_restart = 0
+        self.t = 0
+
+    def update_eps(self):
+        if self.t > self.t_max:
+            self.eps = self.eps_min
+
+        self.eps = cosine_annealing(
+            self.eps_min,
+            self.eps_base,
+            self.t - self.last_restart,
+            self.schedule_in_progress[0] - self.last_restart
+        )
+
+        self.t += 1
+
+        if self.t == self.schedule_in_progress[0]:
+            self.last_restart = self.schedule_in_progress.pop(0)
+            self.eps_base *= self.base_multiplier
+
+    @classmethod
+    def constant_eps(cls, eps):
+        """Return constant scheduler."""
+        return cls(eps, eps, 0, 1.0)
+
+class EGreedyPolicy:
+
+    def __init__(self, scheduler: EpsScheduler, masked: bool=True) -> None:
+        self.scheduler = scheduler
+        self.masked = masked
+
+    def __call__(self, q_values: torch.Tensor, valid_action_indices) -> int:
+        return egreedy_masked_policy_sampler(
+            q_values, valid_action_indices, self.masked, self.scheduler.eps
+        )

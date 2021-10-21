@@ -23,11 +23,13 @@ from bots.blindchess.agent import (
 )
 from bots.blindchess.networks import TestQNet
 from bots.blindchess.utilities import (
+    EGreedyPolicy,
     move_proxy_reward, 
     capture_proxy_reward, 
-    sense_proxy_reward, 
-    egreedy_masked_policy_sampler,
+    sense_proxy_reward,
     convert_to_tensor,
+    EpsScheduler,
+    EpsScheduler,
 )
 
 # Available options are "online", "offline" or "disabled"
@@ -47,7 +49,14 @@ CONFIG = {
     "evaluation_freq": 10,
     "game_batch_size": 128,
 
-    "eps_greedy_train": 0.8,
+    # Exploration
+    "exploration": {
+        "eps_base": 0.8,
+        "eps_min": 0.05,
+        "base_multiplier": 0.7,
+        "schedule": [0.5, 0.7, 0.9],
+    },
+
     # Frequency for updating target Q network
     "target_q_update": 10,
     "lr": 0.01,
@@ -144,6 +153,13 @@ def main():
         weights=conf.loss_weights,
     )
 
+    annealed_eps_scheduler = EpsScheduler(
+        t_max=conf.n_steps,
+        **conf.exploration
+    )
+
+    testing_eps_scheduler = EpsScheduler.constant_eps(0.0)
+
     # Optimizer
     optimizer = Adam(q_net.parameters(), lr=conf.lr)
 
@@ -162,14 +178,14 @@ def main():
 
     train_agent_manager = QAgentManager(
         q_net,
-        functools.partial(egreedy_masked_policy_sampler, eps=CONFIG['eps_greedy_train']),
+        EGreedyPolicy(annealed_eps_scheduler, masked=True),
         device,
         q_agent_factory,
     )
 
     test_agent_manager = QAgentManager(
         q_net,
-        functools.partial(egreedy_masked_policy_sampler, eps=0.0),
+        EGreedyPolicy(testing_eps_scheduler, masked=True),
         device,
         q_agent_factory,
     )
@@ -237,8 +253,11 @@ def main():
             replay_buffer.add(Transition.stack(white_player.history))
             # replay_buffer.add(Transition.stack(black_player.history))
 
-        # Report if our replay buffer is full
-        wandb.log({"replay_is_full": int(replay_buffer.is_full)})
+        # Report if our replay buffer is full and current annealed epsilon
+        wandb.log({
+            "replay_is_full": int(replay_buffer.is_full),
+            "current_eps": annealed_eps_scheduler.eps,
+        })
 
         print("Training.")
         for i_batch in range(conf.n_batches_per_step):
@@ -256,8 +275,10 @@ def main():
                 batch_act_opponent,
              ) = map(data_converter, data)
 
-            terminal_count = batch_done.count_nonzero().item()
-            info_dict["terminal_fraction"] = terminal_count / conf.batch_size
+            info_dict.update(
+                terminal_transition_fraction=batch_done.count_nonzero().item() / conf.batch_size,
+                reward_transition_fraction=batch_rew.count_nonzero().item() / conf.batch_size
+            )
 
             # Compute Move loss and Opponent Move prediction Loss
             total_loss = combined_loss_func(
@@ -312,6 +333,9 @@ def main():
             rand_agent.plot_directory = f"opponent_{i_step * conf.evaluation_freq}"
 
             reconchess.play_local_game(test_agent, rand_agent)
+
+        # Update epsilons for e-greedy constant
+        annealed_eps_scheduler.update_eps()
 
     # Clean temporary plotting directory if wasn't cleaned previously ()
     tempdir.cleanup()
