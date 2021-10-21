@@ -140,7 +140,10 @@ class PlayerWithBoardHistory(Player):
         if self.move_reward_func is not None:
             self.history[-1].reward += self.move_reward_func(taken_move, requested_move)
 
-        self.save_board_to_svg(requested_move)
+        # Take the latest sense action
+        sense_square = self.history[-2].action
+
+        self.save_board_to_svg(requested_move, squares=[sense_square])
 
     def handle_game_end(
         self, 
@@ -172,11 +175,11 @@ class PlayerWithBoardHistory(Player):
 
         self.save_board_to_svg()
 
-    def save_board_to_svg(self, lastmove=None):
+    def save_board_to_svg(self, lastmove=None, squares=None):
         """Plot the board state with the last requested move."""
 
         if self.plot_directory is not None:
-            svg_board = chess.svg.board(self.board, lastmove=lastmove)
+            svg_board = chess.svg.board(self.board, lastmove=lastmove, squares=squares)
             svg_path = os.path.join(self.plot_directory, f"_{self._plot_index}.svg")
 
             with open(svg_path, "w") as f:
