@@ -4,6 +4,7 @@ import itertools
 import time
 import wandb
 import tempfile
+import numpy as np
 
 import chess
 import reconchess
@@ -41,7 +42,7 @@ CONFIG = {
     "batch_size": 512,
     
     "n_hidden": 64,
-    "n_steps": 5000,
+    "n_steps": 500,
     "n_batches_per_step": 16,
     "n_games_per_step": 128,
     "n_test_games": 128,
@@ -61,7 +62,7 @@ CONFIG = {
         "eps_base": 0.8,
         "eps_min": 0.05,
         "base_multiplier": 0.7,
-        "schedule": [0.5, 0.7, 0.9],
+        "schedule": [0.2, 0.5, 0.7, 0.9],
     },
 
     # Defintion of the loss
@@ -210,6 +211,8 @@ def main():
             batch_size=conf.game_batch_size,
         )
 
+        total_sense_moves = []
+
         # Process the game results
         for _, _, _, white_player, black_player in results:
             
@@ -247,14 +250,20 @@ def main():
                     except IndexError as e:
                         continue
 
+            stacked_white_history = Transition.stack(white_player.history)
+            
+            # Record all sense actions
+            total_sense_moves.extend(stacked_white_history.action[SENSE_DATA_SLICE])
+
             # Add player history to Replay Buffer.
-            replay_buffer.add(Transition.stack(white_player.history))
+            replay_buffer.add(stacked_white_history)
             # replay_buffer.add(Transition.stack(black_player.history))
 
         # Report if our replay buffer is full and current annealed epsilon
         wandb.log({
             "replay_is_full": int(replay_buffer.is_full),
             "current_eps": annealed_eps_scheduler.eps,
+            "played_sense_actions": wandb.Histogram(total_sense_moves),
         })
 
         print("Training.")
@@ -271,11 +280,14 @@ def main():
                 batch_obs_next,
                 batch_act_next_mask,
                 batch_act_opponent,
-             ) = map(data_converter, data)
+            ) = map(data_converter, data)
+
+            batch_act[combined_loss_func.sense_ind]
 
             info_dict.update(
                 terminal_transition_fraction=batch_done.count_nonzero().item() / conf.batch_size,
-                reward_transition_fraction=batch_rew.count_nonzero().item() / conf.batch_size
+                reward_transition_fraction=batch_rew.count_nonzero().item() / conf.batch_size,
+                sampled_sense_actions=wandb.Histogram(batch_act[combined_loss_func.sense_ind].cpu()),
             )
 
             # Compute Move loss and Opponent Move prediction Loss
