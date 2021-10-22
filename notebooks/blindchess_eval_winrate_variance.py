@@ -2,6 +2,7 @@ import random
 
 import matplotlib.pyplot as plt
 import chess
+from reconchess import WinReason
 
 from bots.blindchess.play import DelegatingAgentManager
 from bots.blindchess.play import play_local_game_batched
@@ -37,7 +38,8 @@ for sample_size in sample_sizes:
         batch_size=batch_size
     )
 
-    wins = [r[0] == chess.WHITE for r in game_results]
+    finished_games = [r for r in game_results if r[1] == WinReason.KING_CAPTURE]
+    wins = [int(r[0] == chess.WHITE) for r in finished_games]
 
     samples = [sum(random.sample(wins, sample_size)) / sample_size for _ in range(sample_number)]
     data.append(samples)
