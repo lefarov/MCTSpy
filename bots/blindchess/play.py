@@ -10,7 +10,7 @@ from reconchess.history import GameHistory
 
 
 BatchedAgent = Player
-MatchResult = Tuple[Optional[Color], Optional[WinReason], GameHistory]
+MatchResult = Tuple[Optional[Color], Optional[WinReason], GameHistory, BatchedAgent, BatchedAgent]
 
 
 class BatchedAgentManager:
@@ -117,7 +117,7 @@ def play_local_game_batched(white_manager: BatchedAgentManager,
                 for player in match.players:
                     player.handle_game_end(winner_color, win_reason, game_history)
 
-                match_results.append((winner_color, win_reason, game_history, *match.players))
+                match_results.append((winner_color, win_reason, game_history, match.players[0], match.players[1]))
 
                 matches_in_progress.remove(match)
 

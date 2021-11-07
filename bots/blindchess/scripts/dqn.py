@@ -74,6 +74,8 @@ CONFIG = {
         # Mask Q values for the next observation in TD error.
         "mask_q": True,
     },
+
+    "wand_name_postfix": "fixed-buf_same-target-net_random-obs_reduce-train-set"
 }
 
 
@@ -110,6 +112,7 @@ def main():
         config=CONFIG,
         mode=WANDB_MODE,
     )
+    wandb.run.name += "-" + CONFIG["wand_name_postfix"]
 
     conf = wandb.config
 
@@ -281,8 +284,6 @@ def main():
                 batch_act_next_mask,
                 batch_act_opponent,
             ) = map(data_converter, data)
-
-            batch_act[combined_loss_func.sense_ind]
 
             info_dict.update(
                 terminal_transition_fraction=batch_done.count_nonzero().item() / conf.batch_size,
