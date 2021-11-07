@@ -1,5 +1,6 @@
 from reconchess import play_local_game
 
+from bots.blindchess.play import play_local_game_batched
 from bots.tictac.agent import RandomAgent
 from bots.tictac.game import TicTacToe, Player, WinReason
 
