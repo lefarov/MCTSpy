@@ -11,8 +11,18 @@ import reconchess
 from reconchess import Square
 
 from bots import tictac
-from bots.blindchess.agent import Transition
 from bots.tictac import WinReason, TicTacToe
+
+
+@dataclass
+class Transition:
+    observation: np.ndarray
+    action: int
+    reward: float
+    is_move: bool
+    done: float = 0.0
+    # action_mask: np.ndarray = None
+    # action_opponent: int = -1
 
 
 class PlayerWithBoardHistory(reconchess.Player):
@@ -98,13 +108,16 @@ class PlayerWithBoardHistory(reconchess.Player):
         self.history[-1].done = 1.0
 
         # Append last dummy transition to correctly handle the reward sampling.
+        # (If the reward is in the last transition, it will always be in the Q(t+1) term and
+        #  will never enter the TD loss as 'r'. Thus, we'll never learn the value of victory.)
         self.history.append(
             Transition(
                 self.board.to_array(),
                 action=0,  # Some valid action, not important.
                 reward=0.0,
                 done=0.0,
-                action_mask=np.ones(TicTacToe.BoardSize ** 2),
+                is_move=False
+                # action_mask=np.ones(TicTacToe.BoardSize ** 2),
             )
         )
 
@@ -114,7 +127,7 @@ class RandomAgent(PlayerWithBoardHistory):
     def choose_sense(self, sense_actions: List[int], move_actions: List[int], seconds_left: float) -> \
             Optional[int]:
         sense = random.choice(sense_actions)
-        self.history.append(Transition(self.board.to_array(), sense, reward=0.0))
+        self.history.append(Transition(self.board.to_array(), sense, reward=0.0, is_move=False))
 
         return sense
 
@@ -122,7 +135,7 @@ class RandomAgent(PlayerWithBoardHistory):
         move = random.choice(move_actions)
 
         self.history.append(
-            Transition(self.board.to_array(), move, reward=0)
+            Transition(self.board.to_array(), move, reward=0, is_move=True)
         )
 
         return move

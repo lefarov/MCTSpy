@@ -8,6 +8,8 @@ import typing as t
 
 from enum import IntEnum
 
+from reconchess import LocalGame
+
 
 class ActionType(IntEnum):
     Unknown = 0
@@ -32,6 +34,7 @@ class WinReason(IntEnum):
 
 
 class Board:
+    Size: int = 3
     
     def __init__(self) -> None:
         self._board = [Square.Empty] * (TicTacToe.BoardSize ** 2)  # type: t.List[Square]
@@ -53,7 +56,7 @@ class Board:
         return s
 
     def to_array(self):
-        return np.array(self._board)
+        return np.array(self._board).reshape((Board.Size, Board.Size))
 
     def copy(self) -> 'Board':
         return copy.deepcopy(self)
@@ -62,10 +65,12 @@ class Board:
         pass
 
 
-class TicTacToe(reconchess.game.Game):
+class TicTacToe(LocalGame):
     BoardSize: int = 3
 
     def __init__(self, seconds_per_player: float = 900):
+        super().__init__(seconds_per_player)
+
         self.turn = Player.Cross
         self.board = Board()
 

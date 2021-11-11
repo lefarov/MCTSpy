@@ -3,7 +3,7 @@ import operator
 import torch
 import typing as t
 
-from bots.tictac import TicTacToe
+from bots.tictac import TicTacToe, Board
 
 
 class TicTacQNet(torch.nn.Module):
@@ -25,13 +25,13 @@ class TicTacQNet(torch.nn.Module):
             torch.nn.Conv3d(
                 in_channels=in_channels,
                 out_channels=n_hidden,
-                kernel_size=(1, 5, 5),
-                stride=(1, 3, 3)
+                kernel_size=(1, 3, 3),
+                stride=(1, 1, 1)
             ),
             torch.nn.ReLU(),
         )
 
-        dummy_input = torch.zeros((1, in_channels, self.narx_memory_length, 8, 8))
+        dummy_input = torch.zeros((1, in_channels, self.narx_memory_length, Board.Size, Board.Size))
         fc_input_size = functools.reduce(operator.mul, self.conv_stack(dummy_input).shape)
 
         self.fc_stack = torch.nn.Sequential(
