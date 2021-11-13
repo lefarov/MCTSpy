@@ -61,17 +61,18 @@ def main():
     games_per_epoch = 32
 
     net_memory_length = 3
-    net_hidden_number = 32
+    net_hidden_number = 128
 
     train_batch_size = 128
     train_lr = 1e-3
     train_weight_sense = 1.0
 
-    train_data_mode = 'small-fixed-data'
+    train_data_mode = 'fixed-data'
     # train_data_mode = 'replay-buffer'
     # train_data_mode = 'fresh-data'
+    fixed_data_epoch_number = 100
 
-    wandb_description = 'small-fixed-data'
+    wandb_description = 'larger-model-more-data-2'
 
     wandb.init(project="recon_tictactoe", entity="not-working-solutions", )
     wandb.run.name += '-' + wandb_description
@@ -109,9 +110,9 @@ def main():
             replay_buffer.extend(episodes)
         elif train_data_mode == 'fresh-data':
             replay_buffer = episodes
-        elif train_data_mode == 'small-fixed-data':
-            if i_epoch == 0:
-                replay_buffer = episodes
+        elif train_data_mode == 'fixed-data':
+            if i_epoch < fixed_data_epoch_number:
+                replay_buffer.extend(episodes)
         else:
             raise ValueError()
 
@@ -124,7 +125,7 @@ def main():
             data_raw = []
             for i_sample in range(train_batch_size):
                 # Sample an episode, weighted by episode length so all transitions are equally likely.
-                episode = random.choices(replay_buffer, weights=[len(e) for e in episodes], k=1)[0]
+                episode = random.choices(replay_buffer, weights=[len(e) for e in replay_buffer], k=1)[0]
 
                 # Sample a transition and extract its history.
                 t_now = random.randint(0, len(episode) - 2)
