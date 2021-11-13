@@ -4,6 +4,7 @@ from typing import *
 import numpy as np
 import torch
 import torch.nn.functional
+import wandb
 from reconchess import play_local_game
 
 from bots.blindchess.losses import q_loss
@@ -56,7 +57,7 @@ def action_to_one_hot(action):
 def main():
 
     steps_per_epoch = 21
-    epoch_number = 1000
+    epoch_number = 10000
     games_per_epoch = 32
 
     net_memory_length = 3
@@ -65,6 +66,8 @@ def main():
     train_batch_size = 128
     train_lr = 1e-3
     train_weight_sense = 1.0
+
+    wandb.init(project="recon_tictactoe", entity="not-working-solutions", )
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     dtype = torch.float32
@@ -75,7 +78,7 @@ def main():
     # Train on random agent data.
     agents = [RandomAgent(), RandomAgent()]
 
-    q_net = TicTacQNet(net_memory_length, net_hidden_number)
+    q_net = TicTacQNet(net_memory_length, net_hidden_number).to(device)
     optimizer = torch.optim.Adam(q_net.parameters(), lr=train_lr)
 
     for i_epoch in range(epoch_number):
@@ -144,10 +147,19 @@ def main():
 
             loss_epoch += loss_total.item()
 
+            wandb.log(step=i_step, data={
+                "loss_total_step": loss_total.item(),
+                "loss_move_step": loss_move.item(),
+                "loss_sense_step": loss_sense.item(),
+            })
+
             # print(f"Step: {i_step} | Total: {loss_total.item():.2f} "
             #       f"Move: {loss_move.item():.2f} Sense: {loss_sense.item():.2f}")
 
         loss_epoch /= steps_per_epoch
+
+        step_index = ((i_epoch + 1) * steps_per_epoch - 1)  # Compute the last step index.
+        wandb.log(step=step_index, data={"loss_total_epoch": loss_epoch})
 
         print(f"Epoch {i_epoch}  Loss: {loss_epoch}")
 
