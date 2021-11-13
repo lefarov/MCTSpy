@@ -67,7 +67,14 @@ def main():
     train_lr = 1e-3
     train_weight_sense = 1.0
 
+    train_data_mode = 'small-fixed-data'
+    # train_data_mode = 'replay-buffer'
+    # train_data_mode = 'fresh-data'
+
+    wandb_description = 'small-fixed-data'
+
     wandb.init(project="recon_tictactoe", entity="not-working-solutions", )
+    wandb.run.name += '-' + wandb_description
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     dtype = torch.float32
@@ -80,6 +87,8 @@ def main():
 
     q_net = TicTacQNet(net_memory_length, net_hidden_number).to(device)
     optimizer = torch.optim.Adam(q_net.parameters(), lr=train_lr)
+
+    replay_buffer = []  # type: List[Episode]
 
     for i_epoch in range(epoch_number):
 
@@ -96,6 +105,16 @@ def main():
 
             episodes.append(Episode(history_mine))
 
+        if train_data_mode == 'replay-buffer':
+            replay_buffer.extend(episodes)
+        elif train_data_mode == 'fresh-data':
+            replay_buffer = episodes
+        elif train_data_mode == 'small-fixed-data':
+            if i_epoch == 0:
+                replay_buffer = episodes
+        else:
+            raise ValueError()
+
         # ---------------- Train the model. ----------------
         # Enumerate the steps by their global index for convenience.
         step_index = i_epoch * steps_per_epoch
@@ -105,7 +124,7 @@ def main():
             data_raw = []
             for i_sample in range(train_batch_size):
                 # Sample an episode, weighted by episode length so all transitions are equally likely.
-                episode = random.choices(episodes, weights=[len(e) for e in episodes], k=1)[0]
+                episode = random.choices(replay_buffer, weights=[len(e) for e in episodes], k=1)[0]
 
                 # Sample a transition and extract its history.
                 t_now = random.randint(0, len(episode) - 2)
