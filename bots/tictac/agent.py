@@ -1,28 +1,29 @@
+import operator
 import os
 import random
 import typing as t
 from typing import List, Optional
 
-import chess
 import numpy as np
-from dataclasses import dataclass
 
 import reconchess
-from reconchess import Square
+import torch
 
 from bots import tictac
-from bots.tictac import WinReason, TicTacToe
+from bots.tictac import WinReason
+from bots.tictac.data_structs import Transition
+from bots.tictac.net import TicTacQNet
 
 
-@dataclass
-class Transition:
-    observation: np.ndarray
-    action: int
-    reward: float
-    is_move: bool
-    done: float = 0.0
-    # action_mask: np.ndarray = None
-    # action_opponent: int = -1
+TPolicySampler = t.Callable[[np.ndarray, List[int]], int]
+
+
+def greedy_policy(q_vals: torch.Tensor, valid_actions: List[int]):
+    q_vals_indexed = list(enumerate(q_vals))
+    q_vals_valid = [q_vals_indexed[i] for i in valid_actions]
+
+    # Return the original index corresponding to the largest q value.
+    return max(q_vals_valid, key=operator.itemgetter(1))[0]
 
 
 class PlayerWithBoardHistory(reconchess.Player):
@@ -139,3 +140,40 @@ class RandomAgent(PlayerWithBoardHistory):
         )
 
         return move
+
+
+class QAgent(PlayerWithBoardHistory):
+
+    def __init__(self, q_net: TicTacQNet, policy_sampler: TPolicySampler = greedy_policy):
+        super().__init__()
+
+        self.q_net = q_net
+        self.policy_sampler = policy_sampler
+
+    def choose_sense(self, sense_actions: List[int], move_actions: List[int], seconds_left: float) -> \
+            Optional[int]:
+
+        q_sense, q_move = self._call_q_net()
+        sense = self.policy_sampler(q_sense, sense_actions)
+
+        self.history.append(Transition(self.board.to_array(), sense, reward=0.0, is_move=False))
+
+        return sense
+
+    def choose_move(self, move_actions: List[int], seconds_left: float) -> Optional[int]:
+        q_sense, q_move = self._call_q_net()
+        move = self.policy_sampler(q_sense, move_actions)
+
+        self.history.append(Transition(self.board.to_array(), move, reward=0.0, is_move=True))
+
+        return move
+
+    def _call_q_net(self):
+        recent_obs_history = [t.observation for t in self.history[-self.q_net.narx_memory_length + 1:]]
+        # Append the freshest board state to the input -- the opponent has made a move that might affect it.
+        recent_obs_history.append(self.board.to_array())
+        obs_tensors = self.q_net.obs_list_to_tensor(recent_obs_history)
+
+        q_sense, q_move = self.q_net(obs_tensors.unsqueeze(0))
+
+        return q_sense[0], q_move[0]

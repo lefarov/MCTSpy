@@ -1,12 +1,17 @@
 import functools
 import operator
+
+import numpy as np
 import torch
 import typing as t
 
 from bots.tictac import TicTacToe, Board
+from bots.tictac.data_structs import DataPoint, DataTensors
 
 
 class TicTacQNet(torch.nn.Module):
+
+    ObsShape = (TicTacToe.BoardSize, TicTacToe.BoardSize, 1)
 
     def __init__(self, narx_memory_length, n_hidden, channels_per_layer: t.Optional[t.List[int]] = None):
         super().__init__()
@@ -66,3 +71,45 @@ class TicTacQNet(torch.nn.Module):
         board_encoding = self.fc_stack(board_encoding)
 
         return board_encoding
+    
+    def convert_transitions_to_tensors(self, data_raw: t.List[DataPoint]):
+        data_n = len(data_raw)
+
+        # Use the same device and dtype as the network itself.
+        dtype, device = self._detect_dtype_and_device()
+
+        data_obs = torch.empty((data_n, self.narx_memory_length, *self.ObsShape), dtype=dtype, device=device)
+        data_obs_next = torch.empty((data_n, self.narx_memory_length, *self.ObsShape), dtype=dtype, device=device)
+        data_act = torch.empty((data_n, 1), dtype=torch.int64, device=device)
+        data_rew = torch.empty((data_n, 1), dtype=dtype, device=device)
+        data_done = torch.empty((data_n, 1), dtype=dtype, device=device)
+        data_is_move = torch.empty((data_n, 1), dtype=dtype, device=device)
+
+        for i_sample, point in enumerate(data_raw):
+            data_obs[i_sample, ...] = self.obs_list_to_tensor([t.observation for t in point.history_now])
+            data_obs_next[i_sample, ...] = self.obs_list_to_tensor([t.observation for t in point.history_next])
+            data_act[i_sample] = point.transition_now.action
+            data_rew[i_sample] = point.transition_now.reward
+            data_done[i_sample] = point.transition_now.done
+            data_is_move[i_sample] = int(point.transition_now.is_move)
+        
+        return DataTensors(data_obs, data_obs_next, data_act, data_rew, data_done, data_is_move)
+
+    def obs_list_to_tensor(self, obs_list: t.List[np.ndarray]):
+        # Pad the obs length to the required memory length.
+        if len(obs_list) < self.narx_memory_length:
+            obs_list = obs_list + [np.zeros_like(obs_list[0])] * (self.narx_memory_length - len(obs_list))
+
+        dtype, device = self._detect_dtype_and_device()
+
+        # Convert to a tensor and add a trivial channel dimension.
+        return torch.tensor(np.stack(obs_list), dtype=dtype, device=device).unsqueeze(-1)
+
+    def _detect_dtype_and_device(self):
+        some_net_params = next(self.conv_stack.parameters())
+
+        return some_net_params.dtype, some_net_params.device
+
+    # @staticmethod
+    # def action_to_one_hot(action):
+    #     return torch.nn.functional.one_hot(torch.tensor(action), TicTacToe.BoardSize ** 2)

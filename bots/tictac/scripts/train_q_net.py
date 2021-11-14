@@ -10,49 +10,10 @@ from reconchess import play_local_game
 
 from bots.blindchess.losses import q_loss
 from bots.blindchess.play import play_local_game_batched
-from bots.tictac.agent import RandomAgent, Transition
+from bots.tictac.agent import RandomAgent, QAgent
+from bots.tictac.data_structs import Episode, DataPoint, Transition, DataTensors
 from bots.tictac.game import TicTacToe, Player, WinReason, Board
 from bots.tictac.net import TicTacQNet
-
-
-class Episode(NamedTuple):
-    transitions: List[Transition]
-
-    def __len__(self):
-        return len(self.transitions)
-
-
-class DataPoint(NamedTuple):
-    transition_history: List[Transition]
-
-    @property
-    def transition_now(self):
-        # The train transition is stored as the next to last in the history.
-        return self.transition_history[-2]
-
-    @property
-    def transition_next(self):
-        # The next (t + 1_ transition is stored as the last in the history.
-        return self.transition_history[-1]
-
-    @property
-    def history_now(self):
-        # All but the last, which is the next transition (t + 1).
-        return self.transition_history[:-1]
-
-    @property
-    def history_next(self):
-        # All but the first, which is too old for the history of the next transition.
-        return self.transition_history[1:]
-
-
-def obs_list_to_tensor(obs_list):
-    # Stack, convert to a tensor and add a trivial channel dimension.
-    return torch.tensor(np.stack([t.observation for t in obs_list])).unsqueeze(-1)
-
-
-def action_to_one_hot(action):
-    return torch.nn.functional.one_hot(torch.tensor(action), TicTacToe.BoardSize ** 2)
 
 
 def main():
@@ -68,6 +29,9 @@ def main():
     train_lr = 1e-3
     train_weight_sense = 1.0
 
+    eval_freq_epochs = 10
+    eval_games = 128
+
     # train_data_mode = 'fixed-data'
     # train_data_mode = 'replay-buffer'
     train_data_mode = 'fresh-data'
@@ -81,17 +45,15 @@ def main():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     dtype = torch.float32
 
-    obs_shape = (TicTacToe.BoardSize, TicTacToe.BoardSize, 1)
-    act_shape = (1,)  # Action index.
-
-    # Train on random agent data.
-    agents = [RandomAgent(), RandomAgent()]
-
     q_net = TicTacQNet(net_memory_length, net_hidden_number).to(device)
     optimizer = torch.optim.Adam(q_net.parameters(), lr=train_lr)
 
+    # Train on random agent data.
+    agents = [RandomAgent(), RandomAgent()]
+    q_agent = QAgent(q_net)
+
     print("Built the Q-Net.")
-    torchsummary.summary(q_net, (net_memory_length, *obs_shape))
+    torchsummary.summary(q_net, (net_memory_length, *TicTacQNet.ObsShape))
 
     replay_buffer = []  # type: List[Episode]
 
@@ -139,30 +101,17 @@ def main():
 
                 data_raw.append(DataPoint(transition_history))
 
-            # --- Convert into training arrays.
-            data_obs = torch.empty((train_batch_size, net_memory_length, *obs_shape), dtype=dtype, device=device)
-            data_obs_next = torch.empty((train_batch_size, net_memory_length, *obs_shape), dtype=dtype, device=device)
-            data_act = torch.empty((train_batch_size, *act_shape), dtype=torch.int64, device=device)
-            data_rew = torch.empty((train_batch_size, 1), dtype=dtype, device=device)
-            data_done = torch.empty((train_batch_size, 1), dtype=dtype, device=device)
-            data_is_move = torch.empty((train_batch_size, 1), dtype=dtype, device=device)
-
-            for i_sample, point in enumerate(data_raw):
-                data_obs[i_sample, ...] = obs_list_to_tensor(point.history_now)
-                data_obs_next[i_sample, ...] = obs_list_to_tensor(point.history_next)
-                data_act[i_sample] = point.transition_now.action
-                data_rew[i_sample] = point.transition_now.reward
-                data_done[i_sample] = point.transition_now.done
-                data_is_move[i_sample] = int(point.transition_now.is_move)
+            # --- Convert into training tensors.
+            data = q_net.convert_transitions_to_tensors(data_raw)
 
             # --- Update the model.
             optimizer.zero_grad()
 
-            q_sense_now, q_move_now = q_net(data_obs)
-            q_sense_next, q_move_next = q_net(data_obs)
+            q_sense_now, q_move_now = q_net(data.obs)
+            q_sense_next, q_move_next = q_net(data.obs)
 
-            loss_sense = torch.sum((1 - data_is_move) * q_loss(q_sense_now, q_sense_next, data_act, data_rew, data_done))
-            loss_move  = torch.sum(     data_is_move  * q_loss(q_move_now,  q_move_next,  data_act, data_rew, data_done))
+            loss_sense = torch.sum((1 - data.is_move) * q_loss(q_sense_now, q_sense_next, data.act, data.rew, data.done))
+            loss_move  = torch.sum(     data.is_move  * q_loss(q_move_now,  q_move_next,  data.act, data.rew, data.done))
 
             loss_total = loss_move + train_weight_sense * loss_sense
 
@@ -184,6 +133,17 @@ def main():
 
         step_index = ((i_epoch + 1) * steps_per_epoch - 1)  # Compute the last step index.
         wandb.log(step=step_index, data={"loss_total_epoch": loss_epoch})
+
+        if i_epoch % eval_freq_epochs == 0:
+            win_count = 0
+            for i_game in range(eval_games):
+                winner_color, win_reason, _ = play_local_game(q_agent, agents[1], TicTacToe())
+                if winner_color == Player.Cross:
+                    win_count += 1
+
+            winrate = win_count / eval_games
+            print(f"Eval winrate: {winrate}")
+            wandb.log(step=step_index, data={"winrate": winrate})
 
         print(f"Epoch {i_epoch}  Loss: {loss_epoch}")
 
