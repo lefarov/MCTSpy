@@ -4,6 +4,7 @@ from typing import *
 import numpy as np
 import torch
 import torch.nn.functional
+import torchsummary
 import wandb
 from reconchess import play_local_game
 
@@ -58,7 +59,7 @@ def main():
 
     steps_per_epoch = 21
     epoch_number = 10000
-    games_per_epoch = 32
+    games_per_epoch = 128
 
     net_memory_length = 3
     net_hidden_number = 128
@@ -67,15 +68,15 @@ def main():
     train_lr = 1e-3
     train_weight_sense = 1.0
 
-    train_data_mode = 'fixed-data'
+    # train_data_mode = 'fixed-data'
     # train_data_mode = 'replay-buffer'
-    # train_data_mode = 'fresh-data'
+    train_data_mode = 'fresh-data'
     fixed_data_epoch_number = 100
 
-    wandb_description = 'larger-model-more-data-2'
+    wandb_description = 'fresh-large-data'
 
     wandb.init(project="recon_tictactoe", entity="not-working-solutions", )
-    wandb.run.name += '-' + wandb_description
+    wandb.run.name = wandb.run.name + '-' + wandb_description if wandb.run.name else wandb_description  # Can be 'None'.
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     dtype = torch.float32
@@ -88,6 +89,9 @@ def main():
 
     q_net = TicTacQNet(net_memory_length, net_hidden_number).to(device)
     optimizer = torch.optim.Adam(q_net.parameters(), lr=train_lr)
+
+    print("Built the Q-Net.")
+    torchsummary.summary(q_net, (net_memory_length, *obs_shape))
 
     replay_buffer = []  # type: List[Episode]
 
