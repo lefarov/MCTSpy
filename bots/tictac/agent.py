@@ -162,7 +162,7 @@ class QAgent(PlayerWithBoardHistory):
 
     def choose_move(self, move_actions: List[int], seconds_left: float) -> Optional[int]:
         q_sense, q_move = self._call_q_net()
-        move = self.policy_sampler(q_sense, move_actions)
+        move = self.policy_sampler(q_move, move_actions)
 
         self.history.append(Transition(self.board.to_array(), move, reward=0.0, is_move=True))
 

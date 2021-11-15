@@ -30,12 +30,12 @@ def main():
     train_weight_sense = 1.0
 
     eval_freq_epochs = 10
-    eval_games = 128
+    eval_games = 1024
 
     # train_data_mode = 'fixed-data'
     # train_data_mode = 'replay-buffer'
     train_data_mode = 'fresh-data'
-    fixed_data_epoch_number = 100
+    fixed_data_epoch_number = 10
 
     wandb_description = 'fresh-large-data'
 
@@ -134,6 +134,7 @@ def main():
         step_index = ((i_epoch + 1) * steps_per_epoch - 1)  # Compute the last step index.
         wandb.log(step=step_index, data={"loss_total_epoch": loss_epoch})
 
+        # --- Winrate evaluation.
         if i_epoch % eval_freq_epochs == 0:
             win_count = 0
             for i_game in range(eval_games):
