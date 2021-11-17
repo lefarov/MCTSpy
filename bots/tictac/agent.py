@@ -162,7 +162,7 @@ class QAgent(PlayerWithBoardHistory):
         return move
 
     def _call_q_net(self):
-        recent_obs_history = [t.observation for t in self.history[-self.q_net.narx_memory_length + 1:]]
+        recent_obs_history = [t.observation for t in self.history[len(self.history) - self.q_net.narx_memory_length + 1:]]
         # Append the freshest board state to the input -- the opponent has made a move that might affect it.
         recent_obs_history.append(self.board.to_array())
         obs_tensors = self.q_net.obs_list_to_tensor(recent_obs_history)
