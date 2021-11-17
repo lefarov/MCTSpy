@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional
 import torchsummary
 import wandb
-from reconchess import play_local_game
+from bots.tictac.play_custom import play_local_game
 
 from bots.blindchess.losses import q_loss
 from bots.blindchess.play import play_local_game_batched
@@ -22,7 +22,7 @@ def main():
     epoch_number = 10000
     games_per_epoch = 128
 
-    net_memory_length = 3
+    net_memory_length = 1
     net_hidden_number = 128
 
     train_batch_size = 128
@@ -37,7 +37,7 @@ def main():
     train_data_mode = 'fresh-data'
     fixed_data_epoch_number = 10
 
-    wandb_description = 'fresh-large-data'
+    wandb_description = 'fresh-large-data_true-state'
 
     wandb.init(project="recon_tictactoe", entity="not-working-solutions", )
     wandb.run.name = wandb.run.name + '-' + wandb_description if wandb.run.name else wandb_description  # Can be 'None'.
