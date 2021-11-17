@@ -112,14 +112,7 @@ class PlayerWithBoardHistory(reconchess.Player):
         # (If the reward is in the last transition, it will always be in the Q(t+1) term and
         #  will never enter the TD loss as 'r'. Thus, we'll never learn the value of victory.)
         self.history.append(
-            Transition(
-                self.board.to_array(),
-                action=0,  # Some valid action, not important.
-                reward=0.0,
-                done=0.0,
-                is_move=False
-                # action_mask=np.ones(TicTacToe.BoardSize ** 2),
-            )
+            Transition.get_empty_transition()
         )
 
 
@@ -128,7 +121,7 @@ class RandomAgent(PlayerWithBoardHistory):
     def choose_sense(self, sense_actions: List[int], move_actions: List[int], seconds_left: float) -> \
             Optional[int]:
         sense = random.choice(sense_actions)
-        self.history.append(Transition(self.board.to_array(), sense, reward=0.0, is_move=False))
+        self.history.append(Transition(self.board.to_array(), sense, sense_actions, reward=0.0, is_move=False))
 
         return sense
 
@@ -136,7 +129,7 @@ class RandomAgent(PlayerWithBoardHistory):
         move = random.choice(move_actions)
 
         self.history.append(
-            Transition(self.board.to_array(), move, reward=0, is_move=True)
+            Transition(self.board.to_array(), move, move_actions, reward=0, is_move=True)
         )
 
         return move
@@ -156,7 +149,7 @@ class QAgent(PlayerWithBoardHistory):
         q_sense, q_move = self._call_q_net()
         sense = self.policy_sampler(q_sense, sense_actions)
 
-        self.history.append(Transition(self.board.to_array(), sense, reward=0.0, is_move=False))
+        self.history.append(Transition(self.board.to_array(), sense, sense_actions, reward=0.0, is_move=False))
 
         return sense
 
@@ -164,7 +157,7 @@ class QAgent(PlayerWithBoardHistory):
         q_sense, q_move = self._call_q_net()
         move = self.policy_sampler(q_move, move_actions)
 
-        self.history.append(Transition(self.board.to_array(), move, reward=0.0, is_move=True))
+        self.history.append(Transition(self.board.to_array(), move, move_actions, reward=0.0, is_move=True))
 
         return move
 

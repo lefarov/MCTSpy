@@ -12,7 +12,7 @@ from bots.blindchess.losses import q_loss
 from bots.blindchess.play import play_local_game_batched
 from bots.tictac.agent import RandomAgent, QAgent
 from bots.tictac.data_structs import Episode, DataPoint, Transition, DataTensors
-from bots.tictac.game import TicTacToe, Player, WinReason, Board
+from bots.tictac.game import TicTacToe, Player, WinReason, Board, Square
 from bots.tictac.net import TicTacQNet
 
 
@@ -97,7 +97,10 @@ def main():
                 t_now = random.randint(0, len(episode) - 2)
                 transition_history = []
                 for t in range(t_now - net_memory_length + 1, t_now + 2):  # From n steps ago up to next.
-                    transition_history.append(episode.transitions[t])
+                    if t >= 0:
+                        transition_history.append(episode.transitions[t])
+                    else:  # Pad the history with empty transitions.
+                        transition_history.append(Transition.get_empty_transition())
 
                 data_raw.append(DataPoint(transition_history))
 
@@ -108,10 +111,14 @@ def main():
             optimizer.zero_grad()
 
             q_sense_now, q_move_now = q_net(data.obs)
-            q_sense_next, q_move_next = q_net(data.obs)
+            q_sense_next, q_move_next = q_net(data.obs_next)
 
-            loss_sense = torch.sum((1 - data.is_move) * q_loss(q_sense_now, q_sense_next, data.act, data.rew, data.done))
-            loss_move  = torch.sum(     data.is_move  * q_loss(q_move_now,  q_move_next,  data.act, data.rew, data.done))
+            # Mask the invalid actions.
+            q_move_next[data.act_next_mask == 0] = torch.finfo(dtype).min
+
+            # Q-sense is updated with the next q-move (and vice versa), because that's the next agent's action.
+            loss_sense = torch.sum((1 - data.is_move) * q_loss(q_sense_now, q_move_next,  data.act, data.rew, data.done))
+            loss_move  = torch.sum(     data.is_move  * q_loss(q_move_now,  q_sense_next, data.act, data.rew, data.done))
 
             loss_total = loss_move + train_weight_sense * loss_sense
 

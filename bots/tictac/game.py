@@ -35,7 +35,8 @@ class WinReason(IntEnum):
 
 class Board:
     Size: int = 3
-    
+    Shape: t.Tuple[int, int] = (3, 3)
+
     def __init__(self) -> None:
         self._board = [Square.Empty] * (TicTacToe.BoardSize ** 2)  # type: t.List[Square]
 

@@ -81,6 +81,7 @@ class TicTacQNet(torch.nn.Module):
         data_obs = torch.empty((data_n, self.narx_memory_length, *self.ObsShape), dtype=dtype, device=device)
         data_obs_next = torch.empty((data_n, self.narx_memory_length, *self.ObsShape), dtype=dtype, device=device)
         data_act = torch.empty((data_n, 1), dtype=torch.int64, device=device)
+        data_act_next_mask = torch.zeros((data_n, Board.Size ** 2), dtype=torch.int64, device=device)
         data_rew = torch.empty((data_n, 1), dtype=dtype, device=device)
         data_done = torch.empty((data_n, 1), dtype=dtype, device=device)
         data_is_move = torch.empty((data_n, 1), dtype=dtype, device=device)
@@ -89,11 +90,12 @@ class TicTacQNet(torch.nn.Module):
             data_obs[i_sample, ...] = self.obs_list_to_tensor([t.observation for t in point.history_now])
             data_obs_next[i_sample, ...] = self.obs_list_to_tensor([t.observation for t in point.history_next])
             data_act[i_sample] = point.transition_now.action
+            data_act_next_mask[i_sample, point.transition_next.valid_actions] = 1
             data_rew[i_sample] = point.transition_now.reward
             data_done[i_sample] = point.transition_now.done
             data_is_move[i_sample] = int(point.transition_now.is_move)
         
-        return DataTensors(data_obs, data_obs_next, data_act, data_rew, data_done, data_is_move)
+        return DataTensors(data_obs, data_obs_next, data_act, data_act_next_mask, data_rew, data_done, data_is_move)
 
     def obs_list_to_tensor(self, obs_list: t.List[np.ndarray]):
         # Pad the obs length to the required memory length.

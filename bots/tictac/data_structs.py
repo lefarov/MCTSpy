@@ -4,16 +4,21 @@ import typing as t
 import torch
 import numpy as np
 
+from bots.tictac import Square, Board
+
 
 @dataclass
 class Transition:
     observation: np.ndarray
     action: int
+    valid_actions: t.List[int]
     reward: float
     is_move: bool
     done: float = 0.0
-    # action_mask: np.ndarray = None
-    # action_opponent: int = -1
+
+    @staticmethod
+    def get_empty_transition():
+        return Transition(np.full(Board.Shape, fill_value=Square.Empty), -1, [-1],  0.0, False)
 
 
 class Episode(t.NamedTuple):
@@ -51,6 +56,7 @@ class DataTensors(t.NamedTuple):
     obs: torch.Tensor
     obs_next: torch.Tensor
     act: torch.Tensor
+    act_next_mask: torch.Tensor
     rew: torch.Tensor
     done: torch.Tensor
     is_move: torch.Tensor
