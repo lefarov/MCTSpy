@@ -26,24 +26,28 @@ class TicTacQNet(torch.nn.Module):
         # where N - batch size, C (channels) - one-hot-encoding of a piece,
         # D (depth) - history length, H and W are board dimensions (i.e. 8x8).
 
-        self.conv_stack = torch.nn.Sequential(
-            torch.nn.Conv3d(
-                in_channels=in_channels,
-                out_channels=n_hidden,
-                kernel_size=(1, 3, 3),
-                stride=(1, 1, 1)
-            ),
-            torch.nn.ReLU(),
-        )
+        # self.conv_stack = torch.nn.Sequential(
+        #     torch.nn.Conv3d(
+        #         in_channels=in_channels,
+        #         out_channels=n_hidden,
+        #         kernel_size=(1, 3, 3),
+        #         stride=(1, 1, 1)
+        #     ),
+        #     torch.nn.ReLU(),
+        # )
+        #
+        # dummy_input = torch.zeros((1, in_channels, self.narx_memory_length, Board.Size, Board.Size))
+        # fc_input_size = functools.reduce(operator.mul, self.conv_stack(dummy_input).shape)
 
-        dummy_input = torch.zeros((1, in_channels, self.narx_memory_length, Board.Size, Board.Size))
-        fc_input_size = functools.reduce(operator.mul, self.conv_stack(dummy_input).shape)
+        fc_input_size = in_channels * self.narx_memory_length * Board.Size * Board.Size
 
         self.fc_stack = torch.nn.Sequential(
             torch.nn.Linear(fc_input_size, n_hidden),
-            torch.nn.ReLU(),
+            torch.nn.GELU(),
             torch.nn.Linear(n_hidden, n_hidden),
-            torch.nn.ReLU(),
+            torch.nn.GELU(),
+            torch.nn.Linear(n_hidden, n_hidden),
+            torch.nn.GELU(),
         )
 
         # Player heads
@@ -51,6 +55,7 @@ class TicTacQNet(torch.nn.Module):
         self.fc_move_q = torch.nn.Linear(self.n_hidden, TicTacToe.BoardSize ** 2)
 
     def forward(self, board_memory: torch.Tensor):
+
         # Compute backbone
         board_encoding = self.backbone(board_memory)
 
@@ -61,12 +66,16 @@ class TicTacQNet(torch.nn.Module):
         return sense_q, move_q
 
     def backbone(self, board_memory: torch.Tensor):
-        # Re-align board memory to fit the shape described in init
-        # (B, T, H, W, C) -> (B, C, T, H, W)
-        assert board_memory.ndim == 5
-        board_encoding = board_memory.permute(0, 4, 1, 2, 3)
+        # # Re-align board memory to fit the shape described in init
+        # # (B, T, H, W, C) -> (B, C, T, H, W)
+        # assert board_memory.ndim == 5
+        # board_encoding = board_memory.permute(0, 4, 1, 2, 3)
+        #
+        # board_encoding = self.conv_stack(board_encoding)
 
-        board_encoding = self.conv_stack(board_encoding)
+        # TODO DEBUG ONLY
+        board_encoding = board_memory
+
         board_encoding = torch.flatten(board_encoding, start_dim=1)
         board_encoding = self.fc_stack(board_encoding)
 
@@ -108,7 +117,7 @@ class TicTacQNet(torch.nn.Module):
         return torch.tensor(np.stack(obs_list), dtype=dtype, device=device).unsqueeze(-1)
 
     def _detect_dtype_and_device(self):
-        some_net_params = next(self.conv_stack.parameters())
+        some_net_params = next(self.fc_stack.parameters())
 
         return some_net_params.dtype, some_net_params.device
 

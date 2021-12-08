@@ -23,7 +23,7 @@ def main():
     games_per_epoch = 128
 
     net_memory_length = 1
-    net_hidden_number = 128
+    net_hidden_number = 512
 
     train_batch_size = 128
     train_lr = 1e-3
@@ -37,7 +37,7 @@ def main():
     train_data_mode = 'fresh-data'
     fixed_data_epoch_number = 10
 
-    wandb_description = 'fresh-large-data_true-state'
+    wandb_description = 'fresh-data_true-state_fc-net-large'
 
     wandb.init(project="recon_tictactoe", entity="not-working-solutions", )
     wandb.run.name = wandb.run.name + '-' + wandb_description if wandb.run.name else wandb_description  # Can be 'None'.
