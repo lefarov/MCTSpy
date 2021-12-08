@@ -26,6 +26,20 @@ def greedy_policy(q_vals: torch.Tensor, valid_actions: List[int]):
     return max(q_vals_valid, key=operator.itemgetter(1))[0]
 
 
+def e_greedy_policy_factory(eps: float):
+    def e_greedy_policy(q_vals: torch.Tensor, valid_actions: List[int]):
+        if random.random() < eps:
+            return random.choice(valid_actions)
+
+        q_vals_indexed = list(enumerate(q_vals))
+        q_vals_valid = [q_vals_indexed[i] for i in valid_actions]
+
+        # Return the original index corresponding to the largest q value.
+        return max(q_vals_valid, key=operator.itemgetter(1))[0]
+
+    return e_greedy_policy
+
+
 class PlayerWithBoardHistory(reconchess.Player):
     """ Player subclass that maintains board state and records its history."""
 

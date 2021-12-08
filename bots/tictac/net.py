@@ -26,28 +26,22 @@ class TicTacQNet(torch.nn.Module):
         # where N - batch size, C (channels) - one-hot-encoding of a piece,
         # D (depth) - history length, H and W are board dimensions (i.e. 8x8).
 
-        # self.conv_stack = torch.nn.Sequential(
-        #     torch.nn.Conv3d(
-        #         in_channels=in_channels,
-        #         out_channels=n_hidden,
-        #         kernel_size=(1, 3, 3),
-        #         stride=(1, 1, 1)
-        #     ),
-        #     torch.nn.ReLU(),
-        # )
-        #
-        # dummy_input = torch.zeros((1, in_channels, self.narx_memory_length, Board.Size, Board.Size))
-        # fc_input_size = functools.reduce(operator.mul, self.conv_stack(dummy_input).shape)
+        self.conv_stack = torch.nn.Sequential(
+            torch.nn.Conv3d(
+                in_channels=in_channels,
+                out_channels=n_hidden,
+                kernel_size=(1, 3, 3),
+                stride=(1, 1, 1)
+            ),
+            torch.nn.ReLU(),
+        )
 
-        fc_input_size = in_channels * self.narx_memory_length * Board.Size * Board.Size
+        dummy_input = torch.zeros((1, in_channels, self.narx_memory_length, Board.Size, Board.Size))
+        fc_input_size = functools.reduce(operator.mul, self.conv_stack(dummy_input).shape)
 
         self.fc_stack = torch.nn.Sequential(
             torch.nn.Linear(fc_input_size, n_hidden),
-            torch.nn.GELU(),
-            torch.nn.Linear(n_hidden, n_hidden),
-            torch.nn.GELU(),
-            torch.nn.Linear(n_hidden, n_hidden),
-            torch.nn.GELU(),
+            torch.nn.ReLU(),
         )
 
         # Player heads
@@ -66,15 +60,12 @@ class TicTacQNet(torch.nn.Module):
         return sense_q, move_q
 
     def backbone(self, board_memory: torch.Tensor):
-        # # Re-align board memory to fit the shape described in init
-        # # (B, T, H, W, C) -> (B, C, T, H, W)
-        # assert board_memory.ndim == 5
-        # board_encoding = board_memory.permute(0, 4, 1, 2, 3)
-        #
-        # board_encoding = self.conv_stack(board_encoding)
+        # Re-align board memory to fit the shape described in init
+        # (B, T, H, W, C) -> (B, C, T, H, W)
+        assert board_memory.ndim == 5
+        board_encoding = board_memory.permute(0, 4, 1, 2, 3)
 
-        # TODO DEBUG ONLY
-        board_encoding = board_memory
+        board_encoding = self.conv_stack(board_encoding)
 
         board_encoding = torch.flatten(board_encoding, start_dim=1)
         board_encoding = self.fc_stack(board_encoding)

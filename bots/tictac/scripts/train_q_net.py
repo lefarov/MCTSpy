@@ -1,3 +1,4 @@
+import math
 import random
 from typing import *
 
@@ -10,7 +11,7 @@ from bots.tictac.play_custom import play_local_game
 
 from bots.blindchess.losses import q_loss
 from bots.blindchess.play import play_local_game_batched
-from bots.tictac.agent import RandomAgent, QAgent
+from bots.tictac.agent import RandomAgent, QAgent, e_greedy_policy_factory
 from bots.tictac.data_structs import Episode, DataPoint, Transition, DataTensors
 from bots.tictac.game import TicTacToe, Player, WinReason, Board, Square
 from bots.tictac.net import TicTacQNet
@@ -18,8 +19,8 @@ from bots.tictac.net import TicTacQNet
 
 def main():
 
-    steps_per_epoch = 21
-    epoch_number = 10000
+    steps_per_epoch = 32
+    epoch_number = 2000
     games_per_epoch = 128
 
     net_memory_length = 1
@@ -28,6 +29,8 @@ def main():
     train_batch_size = 128
     train_lr = 1e-3
     train_weight_sense = 1.0
+    train_eps_max = 0.8
+    train_eps_min = 0.1
 
     eval_freq_epochs = 10
     eval_games = 1024
@@ -37,7 +40,7 @@ def main():
     train_data_mode = 'fresh-data'
     fixed_data_epoch_number = 10
 
-    wandb_description = 'fresh-data_true-state_fc-net-large'
+    wandb_description = 'fresh-data_true-state_online_eps-sched'
 
     wandb.init(project="recon_tictactoe", entity="not-working-solutions", )
     wandb.run.name = wandb.run.name + '-' + wandb_description if wandb.run.name else wandb_description  # Can be 'None'.
@@ -49,8 +52,9 @@ def main():
     optimizer = torch.optim.Adam(q_net.parameters(), lr=train_lr)
 
     # Train on random agent data.
-    agents = [RandomAgent(), RandomAgent()]
-    q_agent = QAgent(q_net)
+    q_agent_train = QAgent(q_net, policy_sampler=e_greedy_policy_factory(train_eps_max))
+    q_agent_eval = QAgent(q_net)
+    agents = [q_agent_train, RandomAgent()]
 
     print("Built the Q-Net.")
     torchsummary.summary(q_net, (net_memory_length, *TicTacQNet.ObsShape))
@@ -141,11 +145,17 @@ def main():
         step_index = ((i_epoch + 1) * steps_per_epoch - 1)  # Compute the last step index.
         wandb.log(step=step_index, data={"loss_total_epoch": loss_epoch})
 
+        # --- Update the eps-policy.
+        t = i_epoch / epoch_number
+        eps = train_eps_max * math.cos(t * math.pi / 2) + train_eps_min
+        q_agent_train.policy_sampler = e_greedy_policy_factory(eps)
+        wandb.log(step=step_index, data={"eps": eps})
+
         # --- Winrate evaluation.
         if i_epoch % eval_freq_epochs == 0:
             win_count = 0
             for i_game in range(eval_games):
-                winner_color, win_reason, _ = play_local_game(q_agent, agents[1], TicTacToe())
+                winner_color, win_reason, _ = play_local_game(q_agent_eval, agents[1], TicTacToe())
                 if winner_color == Player.Cross:
                     win_count += 1
 
