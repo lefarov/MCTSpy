@@ -1,3 +1,4 @@
+import os
 import math
 import random
 import tempfile
@@ -16,6 +17,7 @@ from bots.tictac.agent import RandomAgent, QAgent, e_greedy_policy_factory
 from bots.tictac.data_structs import Episode, DataPoint, Transition, DataTensors
 from bots.tictac.game import TicTacToe, Player, WinReason, Board, Square
 from bots.tictac.net import TicTacQNet
+from bots.tictac.svg import plotting_mode
 
 
 def main():
@@ -167,11 +169,13 @@ def main():
             print(f"Eval winrate: {winrate}")
             wandb.log(step=step_index, data={"winrate": winrate})
 
-            q_agent_eval._root_plot_directory = plotting_dir
-            q_agent_eval._plot_index = 0
-            q_agent_eval.plot_directory = f"player_{i_epoch}"
-            play_local_game(q_agent_eval, agents[1], TicTacToe())
-            q_agent_eval._plot_directory = None
+            # Enter the plotting context
+            with plotting_mode():
+                # Set plotting directories for player and opponent (they'll be created if non-existant)
+                q_agent_eval.plot_directory = os.path.join(plotting_dir, f"player_{i_epoch}")
+                agents[1].plot_directory = os.path.join(plotting_dir, f"opponent_{i_epoch}")
+
+                play_local_game(q_agent_eval, agents[1], TicTacToe())
 
         print(f"Epoch {i_epoch}  Loss: {loss_epoch}")
 

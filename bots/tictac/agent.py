@@ -9,12 +9,11 @@ import numpy as np
 import reconchess
 import torch
 
-import bots.tictac.svg as svg
-
 from bots import tictac
 from bots.tictac import WinReason
 from bots.tictac.data_structs import Transition
 from bots.tictac.net import TicTacQNet
+from bots.tictac.svg import board as render_board, plotting_active
 
 
 TPolicySampler = t.Callable[[np.ndarray, List[int]], int]
@@ -45,17 +44,12 @@ def e_greedy_policy_factory(eps: float):
 class PlayerWithBoardHistory(reconchess.Player):
     """ Player subclass that maintains board state and records its history."""
 
-    def __init__(
-        self,
-        root_plot_directory=None,
-    ) -> None:
-
+    def __init__(self) -> None:
         self.board = None
         self.color = None
 
-        self._root_plot_directory = root_plot_directory
-        self._plot_directory = None
-        self._plot_index = 0
+        self.plot_index = 0
+        self.plot_directory = None
 
         self.history = []  # type: t.List[Transition]
 
@@ -66,15 +60,10 @@ class PlayerWithBoardHistory(reconchess.Player):
 
     @plot_directory.setter
     def plot_directory(self, directory):
-        if self._root_plot_directory is None:
-            raise ValueError(
-                "Cannot set plotting directory for the agent with None root plotting directory"
-            )
-
-        self._plot_directory = os.path.join(self._root_plot_directory, directory)
-        os.makedirs(self._plot_directory)
-
-        self._plot_index = 0
+        self._plot_directory = directory
+        
+        if directory is not None:
+            os.makedirs(self._plot_directory)
 
     def handle_game_start(
         self, color: tictac.Player, board: tictac.Board, opponent_name: str
@@ -82,6 +71,8 @@ class PlayerWithBoardHistory(reconchess.Player):
         # Initialize board and color
         self.board = board
         self.color = tictac.Player(int(color))
+
+        self.plot_index = 0
 
         self.history = []
 
@@ -139,18 +130,18 @@ class PlayerWithBoardHistory(reconchess.Player):
         self.save_board_to_svg()
 
     def save_board_to_svg(self, lastmove=None, squares=None):
-        if self.plot_directory is not None:
-            canvas = svg.board(self.board, lastmove, squares)
-            canvas.saveSvg(os.path.join(self.plot_directory, f"_{self._plot_index}.svg"))
+        if plotting_active():
+            canvas = render_board(self.board, lastmove, squares)
+            canvas.saveSvg(os.path.join(self.plot_directory, f"_{self.plot_index}.svg"))
 
-            self._plot_index += 1
+            self.plot_index += 1
 
     def save_board_to_png(self, lastmove=None, squares=None):
-        if self.plot_directory is not None:
-            canvas = svg.board(self.board, lastmove, squares)
-            canvas.savePng(os.path.join(self.plot_directory, f"_{self._plot_index}.png"))
+        if plotting_active():
+            canvas = render_board(self.board, lastmove, squares)
+            canvas.savePng(os.path.join(self.plot_directory, f"_{self.plot_index}.png"))
 
-            self._plot_index += 1
+            self.plot_index += 1
 
 
 class RandomAgent(PlayerWithBoardHistory):
@@ -174,8 +165,8 @@ class RandomAgent(PlayerWithBoardHistory):
 
 class QAgent(PlayerWithBoardHistory):
 
-    def __init__(self, q_net: TicTacQNet, policy_sampler: TPolicySampler = greedy_policy, root_plot_directory=None):
-        super().__init__(root_plot_directory)
+    def __init__(self, q_net: TicTacQNet, policy_sampler: TPolicySampler = greedy_policy):
+        super().__init__()
 
         self.q_net = q_net
         self.policy_sampler = policy_sampler

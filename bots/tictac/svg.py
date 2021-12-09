@@ -2,6 +2,8 @@
 import drawSvg as draw
 import typing as t
 
+from contextlib import contextmanager
+
 from bots.tictac.game import Board, Square, TicTacToe
 
 
@@ -80,6 +82,25 @@ def board(
     # TODO: Implement the win-line highlighting
 
     return canvas
+
+
+# TODO: move it to central utilities
+_PLOTTING_MODE: bool = False
+
+def plotting_active() -> bool:
+    """Getter for the plotting mode."""
+    return _PLOTTING_MODE
+
+
+@contextmanager
+def plotting_mode():
+    """Context manager for plotting."""
+    global _PLOTTING_MODE
+    old_mode = _PLOTTING_MODE
+
+    _PLOTTING_MODE = True
+    yield
+    _PLOTTING_MODE = old_mode
 
 
 # %%
