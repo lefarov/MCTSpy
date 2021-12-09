@@ -34,6 +34,7 @@ class WinReason(IntEnum):
 
 
 class Board:
+    # TODO: add iteration over the board cells
     Size: int = 3
     Shape: t.Tuple[int, int] = (3, 3)
 
