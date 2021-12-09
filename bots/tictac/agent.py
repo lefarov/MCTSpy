@@ -9,6 +9,8 @@ import numpy as np
 import reconchess
 import torch
 
+import bots.tictac.svg as svg
+
 from bots import tictac
 from bots.tictac import WinReason
 from bots.tictac.data_structs import Transition
@@ -105,6 +107,11 @@ class PlayerWithBoardHistory(reconchess.Player):
         elif self.board[requested_move] != self.color:
             self.board[requested_move] = tictac.Player((int(self.color) + 1) % 2)
 
+        # Take the latest sense action
+        sense_square = self.history[-2].action
+
+        self.save_board_to_svg(requested_move, squares=[sense_square])
+
     def handle_game_end(
             self,
             winner_color: t.Optional[tictac.Player],
@@ -129,6 +136,22 @@ class PlayerWithBoardHistory(reconchess.Player):
             Transition.get_empty_transition()
         )
 
+        self.save_board_to_svg()
+
+    def save_board_to_svg(self, lastmove=None, squares=None):
+        if self.plot_directory is not None:
+            canvas = svg.board(self.board, lastmove, squares)
+            canvas.saveSvg(os.path.join(self.plot_directory, f"_{self._plot_index}.svg"))
+
+            self._plot_index += 1
+
+    def save_board_to_png(self, lastmove=None, squares=None):
+        if self.plot_directory is not None:
+            canvas = svg.board(self.board, lastmove, squares)
+            canvas.savePng(os.path.join(self.plot_directory, f"_{self._plot_index}.png"))
+
+            self._plot_index += 1
+
 
 class RandomAgent(PlayerWithBoardHistory):
 
@@ -151,11 +174,12 @@ class RandomAgent(PlayerWithBoardHistory):
 
 class QAgent(PlayerWithBoardHistory):
 
-    def __init__(self, q_net: TicTacQNet, policy_sampler: TPolicySampler = greedy_policy):
-        super().__init__()
+    def __init__(self, q_net: TicTacQNet, policy_sampler: TPolicySampler = greedy_policy, root_plot_directory=None):
+        super().__init__(root_plot_directory)
 
         self.q_net = q_net
         self.policy_sampler = policy_sampler
+
 
     def choose_sense(self, sense_actions: List[int], move_actions: List[int], seconds_left: float) -> \
             Optional[int]:

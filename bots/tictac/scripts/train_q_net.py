@@ -1,5 +1,6 @@
 import math
 import random
+import tempfile
 from typing import *
 
 import numpy as np
@@ -44,6 +45,9 @@ def main():
 
     wandb.init(project="recon_tictactoe", entity="not-working-solutions", )
     wandb.run.name = wandb.run.name + '-' + wandb_description if wandb.run.name else wandb_description  # Can be 'None'.
+
+    tempdir = tempfile.TemporaryDirectory()
+    plotting_dir = tempdir.name
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     dtype = torch.float32
@@ -163,7 +167,16 @@ def main():
             print(f"Eval winrate: {winrate}")
             wandb.log(step=step_index, data={"winrate": winrate})
 
+            q_agent_eval._root_plot_directory = plotting_dir
+            q_agent_eval._plot_index = 0
+            q_agent_eval.plot_directory = f"player_{i_epoch}"
+            play_local_game(q_agent_eval, agents[1], TicTacToe())
+            q_agent_eval._plot_directory = None
+
         print(f"Epoch {i_epoch}  Loss: {loss_epoch}")
+
+    # Clean temporary plotting directory if wasn't cleaned previously ()
+    tempdir.cleanup()
 
 
 if __name__ == '__main__':
