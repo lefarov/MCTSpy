@@ -1,12 +1,12 @@
 from reconchess import play_local_game
 
-from bots.blindchess.play import play_local_game_batched
 from bots.tictac.agent import RandomAgent
-from bots.tictac.game import TicTacToe, Player, WinReason
+from recon_tictac.interfaces.reconchess.game import LocalGame
+from recon_tictac import Player, WinReason
 
 
 def main():
-    game = TicTacToe()
+    game = LocalGame()
 
     game.start()
 
@@ -31,7 +31,7 @@ def main():
 
     # ==========
 
-    game = TicTacToe()
+    game = LocalGame()
     game.start()
 
     game.move(0)
@@ -60,7 +60,7 @@ def main():
 
     # ========
 
-    game = TicTacToe()
+    game = LocalGame()
 
     agents = [RandomAgent(), RandomAgent()]
 

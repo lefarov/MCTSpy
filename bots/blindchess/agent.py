@@ -16,7 +16,6 @@ from reconchess import (
     Square,
     GameHistory,
     WinReason,
-    history,
 )
 
 from bots.blindchess.utilities import index_to_move, move_to_index, board_to_onehot, mirror_move
@@ -581,7 +580,7 @@ class QAgentManager(BatchedAgentManager):
         )
 
         for i, agent in enumerate(agents):
-            agent.add_to_memory(board_to_onehot(agent.board))
+            agent.add_to_memory(board_to_onehot(agent.render_board))
             narx_memory_batch[i, ...] = agent.nanrx_memory
         
         return torch.as_tensor(narx_memory_batch, device=self.device)

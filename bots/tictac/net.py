@@ -5,13 +5,13 @@ import numpy as np
 import torch
 import typing as t
 
-from bots.tictac import TicTacToe, Board
+from recon_tictac import Board
 from bots.tictac.data_structs import DataPoint, DataTensors
 
 
 class TicTacQNet(torch.nn.Module):
 
-    ObsShape = (TicTacToe.BoardSize, TicTacToe.BoardSize, 1)
+    ObsShape = (Board.Size, Board.Size, 1)
 
     def __init__(self, narx_memory_length, n_hidden, channels_per_layer: t.Optional[t.List[int]] = None):
         super().__init__()
@@ -45,8 +45,8 @@ class TicTacQNet(torch.nn.Module):
         )
 
         # Player heads
-        self.fc_sense_q = torch.nn.Linear(self.n_hidden, TicTacToe.BoardSize ** 2)
-        self.fc_move_q = torch.nn.Linear(self.n_hidden, TicTacToe.BoardSize ** 2)
+        self.fc_sense_q = torch.nn.Linear(self.n_hidden, Board.Size ** 2)
+        self.fc_move_q = torch.nn.Linear(self.n_hidden, Board.Size ** 2)
 
     def forward(self, board_memory: torch.Tensor):
 

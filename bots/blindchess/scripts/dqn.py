@@ -4,7 +4,6 @@ import itertools
 import time
 import wandb
 import tempfile
-import numpy as np
 
 import chess
 import reconchess
@@ -29,7 +28,6 @@ from bots.blindchess.utilities import (
     capture_proxy_reward, 
     sense_proxy_reward,
     convert_to_tensor,
-    EpsScheduler,
     EpsScheduler,
 )
 

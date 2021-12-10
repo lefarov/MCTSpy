@@ -5,15 +5,12 @@ import typing as t
 from typing import List, Optional
 
 import numpy as np
-
 import reconchess
 import torch
 
-from bots import tictac
-from bots.tictac import WinReason
+from recon_tictac import render_board, plotting_active, WinReason, Player, Square, Board
 from bots.tictac.data_structs import Transition
 from bots.tictac.net import TicTacQNet
-from bots.tictac.svg import board as render_board, plotting_active
 
 
 TPolicySampler = t.Callable[[np.ndarray, List[int]], int]
@@ -66,23 +63,23 @@ class PlayerWithBoardHistory(reconchess.Player):
             os.makedirs(self._plot_directory)
 
     def handle_game_start(
-        self, color: tictac.Player, board: tictac.Board, opponent_name: str
+        self, color: Player, board: Board, opponent_name: str
     ):
         # Initialize board and color
         self.board = board
-        self.color = tictac.Player(int(color))
+        self.color = Player(int(color))
 
         self.plot_index = 0
 
         self.history = []
 
     def handle_opponent_move_result(
-        self, captured_my_piece: bool, capture_square: t.Optional[tictac.Square]
+        self, captured_my_piece: bool, capture_square: t.Optional[Square]
     ):
         pass
 
     def handle_sense_result(
-        self, sense_result: t.Tuple[int, t.Optional[tictac.Square]]
+        self, sense_result: t.Tuple[int, t.Optional[Square]]
     ):
         self.board[sense_result[0]] = sense_result[1]
 
@@ -96,7 +93,7 @@ class PlayerWithBoardHistory(reconchess.Player):
         if taken_move == requested_move:
             self.board[requested_move] = self.color
         elif self.board[requested_move] != self.color:
-            self.board[requested_move] = tictac.Player((int(self.color) + 1) % 2)
+            self.board[requested_move] = Player((int(self.color) + 1) % 2)
 
         # Take the latest sense action
         sense_square = self.history[-2].action
@@ -105,8 +102,8 @@ class PlayerWithBoardHistory(reconchess.Player):
 
     def handle_game_end(
             self,
-            winner_color: t.Optional[tictac.Player],
-            win_reason: t.Optional[tictac.WinReason],
+            winner_color: t.Optional[Player],
+            win_reason: t.Optional[WinReason],
             game_history: None
     ):
         if win_reason == WinReason.MatchThree:
@@ -132,14 +129,14 @@ class PlayerWithBoardHistory(reconchess.Player):
     def save_board_to_svg(self, lastmove=None, squares=None):
         if plotting_active():
             canvas = render_board(self.board, lastmove, squares)
-            canvas.saveSvg(os.path.join(self.plot_directory, f"_{self.plot_index}.svg"))
+            canvas.saveSvg(os.path.join(self.plot_directory, f"{self.plot_index}.svg"))
 
             self.plot_index += 1
 
     def save_board_to_png(self, lastmove=None, squares=None):
         if plotting_active():
             canvas = render_board(self.board, lastmove, squares)
-            canvas.savePng(os.path.join(self.plot_directory, f"_{self.plot_index}.png"))
+            canvas.savePng(os.path.join(self.plot_directory, f"{self.plot_index}.png"))
 
             self.plot_index += 1
 
@@ -170,7 +167,6 @@ class QAgent(PlayerWithBoardHistory):
 
         self.q_net = q_net
         self.policy_sampler = policy_sampler
-
 
     def choose_sense(self, sense_actions: List[int], move_actions: List[int], seconds_left: float) -> \
             Optional[int]:

@@ -3,12 +3,20 @@ from copy import deepcopy
 import chess
 from reconchess.types import *
 from reconchess.player import Player
-from reconchess.game import Game, LocalGame, RemoteGame
+from reconchess.game import Game
 from reconchess.history import GameHistory
 
+import recon_tictac
+import recon_tictac.enums
+from recon_tictac.interfaces.reconchess.game import LocalGame
 
-def play_local_game(white_player: Player, black_player: Player, game: LocalGame = None,
-                    seconds_per_player: float = 900) -> Tuple[Optional[Color], Optional[WinReason], GameHistory]:
+
+def play_local_game(
+        nought_player: Player,
+        cross_player: Player,
+        game: LocalGame = None,
+        seconds_per_player: float = 900
+) -> Tuple[Optional[Color], Optional[WinReason], GameHistory]:
     """
     Plays a game between the two players passed in. Uses :class:`LocalGame` to run the game, and just calls
     :func:`play_turn` until the game is over: ::
@@ -16,23 +24,23 @@ def play_local_game(white_player: Player, black_player: Player, game: LocalGame 
         while not game.is_over():
             play_turn(game, player)
 
-    :param white_player: The white :class:`Player`.
-    :param black_player: The black :class:`Player`.
+    :param nought_player: The Nought :class:`Player`.
+    :param cross_player: The Cross :class:`Player`.
     :param game: The :class:`LocalGame` object to use.
     :param seconds_per_player: The time each player has to play. Only used if `game` is not passed in.
     :return: The results of the game, also passed to each player via :meth:`Player.handle_game_end`.
     """
-    players = [black_player, white_player]
+    players = [cross_player, nought_player]
 
     if game is None:
         game = LocalGame(seconds_per_player=seconds_per_player)
 
-    white_name = white_player.__class__.__name__
-    black_name = black_player.__class__.__name__
-    game.store_players(white_name, black_name)
+    nought_name = nought_player.__class__.__name__
+    cross_name = cross_player.__class__.__name__
+    game.store_players(nought_name, cross_name)
 
-    white_player.handle_game_start(chess.WHITE, game.board.copy(), black_name)
-    black_player.handle_game_start(chess.BLACK, game.board.copy(), white_name)
+    nought_player.handle_game_start(bool(recon_tictac.enums.Player.Nought), game.board.copy(), nought_name)
+    cross_player.handle_game_start(bool(recon_tictac.enums.Player.Cross), game.board.copy(), cross_name)
     game.start()
 
     while not game.is_over():
@@ -43,26 +51,8 @@ def play_local_game(white_player: Player, black_player: Player, game: LocalGame 
     win_reason = game.get_win_reason()
     game_history = game.get_game_history()
 
-    white_player.handle_game_end(winner_color, win_reason, game_history)
-    black_player.handle_game_end(winner_color, win_reason, game_history)
-
-    return winner_color, win_reason, game_history
-
-
-def play_remote_game(server_url, game_id, auth, player: Player):
-    game = RemoteGame(server_url, game_id, auth)
-
-    player.handle_game_start(game.get_player_color(), game.get_starting_board(), game.get_opponent_name())
-    game.start()
-
-    while not game.is_over():
-        play_turn(game, player, end_turn_last=False)
-
-    winner_color = game.get_winner_color()
-    win_reason = game.get_win_reason()
-    game_history = game.get_game_history()
-
-    player.handle_game_end(winner_color, win_reason, game_history)
+    nought_player.handle_game_end(winner_color, win_reason, game_history)
+    cross_player.handle_game_end(winner_color, win_reason, game_history)
 
     return winner_color, win_reason, game_history
 

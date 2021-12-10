@@ -4,7 +4,7 @@ import typing as t
 import torch
 import numpy as np
 
-from bots.tictac import Square, Board
+from recon_tictac import Square, Board
 
 
 @dataclass

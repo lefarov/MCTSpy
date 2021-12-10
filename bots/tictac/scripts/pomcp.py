@@ -4,7 +4,7 @@ from functools import partial
 from mctspy.policies import uct_action
 from mctspy.tree import POMCP, DecisionNode
 from mctspy.utilities import random_rollout_value, pull_children_belief_state
-from bots.tictac.simulator import TicTac
+from recon_tictac.interfaces.stateless.simulator import TicTac
 
 
 def report(message):

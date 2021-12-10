@@ -1,6 +1,6 @@
 import random
 
-from bots.tictac.simulator import *
+from recon_tictac.interfaces.stateless.simulator import *
 
 
 game = TicTac()

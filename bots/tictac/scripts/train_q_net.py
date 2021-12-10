@@ -3,20 +3,19 @@ import math
 import random
 from typing import *
 
-import numpy as np
 import torch
 import torch.nn.functional
 import torchsummary
 import wandb
-from bots.tictac.play_custom import play_local_game
+
+from recon_tictac import Player, plotting_mode
+from recon_tictac.interfaces.reconchess.play import play_local_game
+from recon_tictac.interfaces.reconchess.game import LocalGame
 
 from bots.blindchess.losses import q_loss
-from bots.blindchess.play import play_local_game_batched
 from bots.tictac.agent import RandomAgent, QAgent, e_greedy_policy_factory
-from bots.tictac.data_structs import Episode, DataPoint, Transition, DataTensors
-from bots.tictac.game import TicTacToe, Player, WinReason, Board, Square
+from bots.tictac.data_structs import Episode, DataPoint, Transition
 from bots.tictac.net import TicTacQNet
-from bots.tictac.svg import plotting_mode
 
 
 def main():
@@ -72,7 +71,7 @@ def main():
         # ---------------- Collect play data. ----------------
         episodes = []
         for i_game in range(games_per_epoch):
-            winner_color, win_reason, _ = play_local_game(agents[0], agents[1], TicTacToe())
+            winner_color, win_reason, _ = play_local_game(agents[0], agents[1], LocalGame())
 
             # We only train on the white player's perspective for now.
             history_mine = agents[0].history
@@ -159,7 +158,7 @@ def main():
         if i_epoch % eval_freq_epochs == 0:
             win_count = 0
             for i_game in range(eval_games):
-                winner_color, win_reason, _ = play_local_game(q_agent_eval, agents[1], TicTacToe())
+                winner_color, win_reason, _ = play_local_game(q_agent_eval, agents[1], LocalGame())
                 if winner_color == Player.Cross:
                     win_count += 1
 
@@ -173,7 +172,7 @@ def main():
                 q_agent_eval.plot_directory = os.path.join(plotting_dir, f"player_{i_epoch}")
                 agents[1].plot_directory = os.path.join(plotting_dir, f"opponent_{i_epoch}")
 
-                play_local_game(q_agent_eval, agents[1], TicTacToe())
+                play_local_game(q_agent_eval, agents[1], LocalGame())
 
             # --- Sync game renders to WANDB.
             if i_epoch % 100 == 0:

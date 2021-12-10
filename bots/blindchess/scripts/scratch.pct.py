@@ -125,7 +125,7 @@ state.true_board.restore(board)
 
 #%% Construct observation
 obs_embedding = torch.nn.Embedding(len(PIECE_INDEX), 4)
-board_ind, board_ohe = board_to_index_encoding(sim.game.board)
+board_ind, board_ohe = board_to_index_encoding(sim.game.render_board)
 # Learnable embeddings for board observation
 # TODO: can we pretrain it?
 emb = obs_embedding(torch.as_tensor(board_ind, dtype=torch.long))
