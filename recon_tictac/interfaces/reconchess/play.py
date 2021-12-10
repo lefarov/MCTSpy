@@ -30,7 +30,7 @@ def play_local_game(
     :param seconds_per_player: The time each player has to play. Only used if `game` is not passed in.
     :return: The results of the game, also passed to each player via :meth:`Player.handle_game_end`.
     """
-    players = [cross_player, nought_player]
+    players = [nought_player, cross_player]
 
     if game is None:
         game = LocalGame(seconds_per_player=seconds_per_player)
@@ -108,12 +108,12 @@ def play_sense(game: Game, player: Player, sense_actions: List[Square], move_act
     :param sense_actions: The possible sense actions for `player`.
     :param move_actions: The possible move actions for `player`.
     """
+    # TODO ASAP DEBUG ONLY
+    player.board._board = deepcopy(game.board._board)
+
     sense = player.choose_sense(sense_actions, move_actions, game.get_seconds_left())
     sense_result = game.sense(sense)
     player.handle_sense_result(sense_result)
-
-    # TODO ASAP DEBUG ONLY
-    player.board._board = deepcopy(game.board._board)
 
 
 def play_move(game: Game, player: Player, move_actions: List[chess.Move], end_turn_last=False):

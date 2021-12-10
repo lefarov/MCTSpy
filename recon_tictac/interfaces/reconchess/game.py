@@ -3,8 +3,7 @@ import typing as t
 from datetime import datetime
 from reconchess import LocalGame as LocalReconChessGame
 
-from recon_tictac.board import Board
-from recon_tictac import Player, WinReason, Square
+from recon_tictac import Player, WinReason, Square, Board
 
 
 class LocalGame(LocalReconChessGame):

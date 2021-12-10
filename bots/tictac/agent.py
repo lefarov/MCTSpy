@@ -43,7 +43,7 @@ class PlayerWithBoardHistory(reconchess.Player):
 
     def __init__(self) -> None:
         self.board = None
-        self.color = None
+        self.mark = None
 
         self.plot_index = 0
         self.plot_directory = None
@@ -67,7 +67,7 @@ class PlayerWithBoardHistory(reconchess.Player):
     ):
         # Initialize board and color
         self.board = board
-        self.color = Player(int(color))
+        self.mark = Player(int(color))
 
         self.plot_index = 0
 
@@ -91,9 +91,9 @@ class PlayerWithBoardHistory(reconchess.Player):
             capture_square: t.Optional[int]
     ):
         if taken_move == requested_move:
-            self.board[requested_move] = self.color
-        elif self.board[requested_move] != self.color:
-            self.board[requested_move] = Player((int(self.color) + 1) % 2)
+            self.board[requested_move] = self.mark
+        elif self.board[requested_move] != self.mark:
+            self.board[requested_move] = Player((int(self.mark) + 1) % 2)
 
         # Take the latest sense action
         sense_square = self.history[-2].action
@@ -107,7 +107,7 @@ class PlayerWithBoardHistory(reconchess.Player):
             game_history: None
     ):
         if win_reason == WinReason.MatchThree:
-            reward = 1 if winner_color == self.color else -1
+            reward = 1 if winner_color == self.mark else -1
         elif win_reason == WinReason.Draw:
             reward = 0
         else:
