@@ -1,3 +1,4 @@
+# %%
 import copy
 
 import numpy as np
@@ -8,7 +9,7 @@ from recon_tictac.render import render_board
 
 
 class Board:
-    # TODO: add iteration over the board cells
+    # TODO: Invert the board
     Size: int = 3
     Shape: t.Tuple[int, int] = (3, 3)
 
@@ -35,6 +36,23 @@ class Board:
 
     def to_array(self):
         return np.array(self._board).reshape((Board.Size, Board.Size))
+
+    def invert(self):
+        self._board = self.invert_board(self._board)
+
+    @staticmethod
+    def invert_board(board: t.Union[list, np.ndarray]):
+        if isinstance(board, np.ndarray):
+            board = board.flatten()
+
+        for i, square in enumerate(board):
+            if square != Square.Empty:
+                board[i] = Player((square + 1) % 2)
+
+        if isinstance(board, np.ndarray):
+            board = board.reshape((Board.Size, Board.Size))
+
+        return board
 
     def copy(self) -> 'Board':
         return copy.deepcopy(self)
@@ -69,3 +87,21 @@ class Board:
 
     def _repr_svg_(self):
         return render_board(self).asSvg()
+
+
+# %%
+if __name__ == "__main__":
+
+    # %%
+    b = Board()
+    b[0] = Square.Cross
+    b[5] = Square.Nought
+    b[6] = Square.Nought
+    b[7] = Square.Cross
+
+    render_board(b)
+
+    # %%
+    b.invert()
+    render_board(b)
+# %%
