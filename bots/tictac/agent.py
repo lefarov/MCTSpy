@@ -101,7 +101,7 @@ class PlayerWithBoardHistory(reconchess.Player):
         # Take the latest sense action
         sense_square = self.history[-2].action
 
-        self.save_board_to_svg(requested_move, squares=[sense_square])
+        self.save_board_to_png(requested_move, squares=[sense_square])
 
     def handle_game_end(
             self,
@@ -127,7 +127,7 @@ class PlayerWithBoardHistory(reconchess.Player):
             Transition.get_empty_transition()
         )
 
-        self.save_board_to_svg()
+        self.save_board_to_png()
 
     def save_board_to_svg(self, lastmove=None, squares=None):
         if plotting_active():

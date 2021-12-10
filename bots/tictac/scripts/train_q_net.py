@@ -1,7 +1,6 @@
 import os
 import math
 import random
-import tempfile
 from typing import *
 
 import numpy as np
@@ -48,8 +47,7 @@ def main():
     wandb.init(project="recon_tictactoe", entity="not-working-solutions", )
     wandb.run.name = wandb.run.name + '-' + wandb_description if wandb.run.name else wandb_description  # Can be 'None'.
 
-    tempdir = tempfile.TemporaryDirectory()
-    plotting_dir = tempdir.name
+    plotting_dir = os.path.abspath(os.path.join(wandb.run.dir, "games"))
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     dtype = torch.float32
@@ -177,10 +175,11 @@ def main():
 
                 play_local_game(q_agent_eval, agents[1], TicTacToe())
 
-        print(f"Epoch {i_epoch}  Loss: {loss_epoch}")
+            # --- Sync game renders to WANDB.
+            if i_epoch % 100 == 0:
+                wandb.save("games/*")
 
-    # Clean temporary plotting directory if wasn't cleaned previously ()
-    tempdir.cleanup()
+        print(f"Epoch {i_epoch}  Loss: {loss_epoch}")
 
 
 if __name__ == '__main__':
