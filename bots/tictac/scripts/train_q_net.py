@@ -35,6 +35,7 @@ def main():
 
     eval_freq_epochs = 10
     eval_games = 1024
+    discount = 0.5
 
     # train_data_mode = 'fixed-data'
     # train_data_mode = 'replay-buffer'
@@ -124,8 +125,8 @@ def main():
             q_move_next[data.act_next_mask == 0] = torch.finfo(dtype).min
 
             # Q-sense is updated with the next q-move (and vice versa), because that's the next agent's action.
-            loss_sense = torch.sum((1 - data.is_move) * q_loss(q_sense_now, q_move_next,  data.act, data.rew, data.done))
-            loss_move  = torch.sum(     data.is_move  * q_loss(q_move_now,  q_sense_next, data.act, data.rew, data.done))
+            loss_sense = torch.sum((1 - data.is_move) * q_loss(q_sense_now, q_move_next,  data.act, data.rew, data.done, discount=discount))
+            loss_move  = torch.sum(     data.is_move  * q_loss(q_move_now,  q_sense_next, data.act, data.rew, data.done, discount=discount))
 
             loss_total = loss_move + train_weight_sense * loss_sense
 
@@ -159,7 +160,7 @@ def main():
             win_count = 0
             for i_game in range(eval_games):
                 winner_color, win_reason, _ = play_local_game(q_agent_eval, agents[1], LocalGame())
-                if winner_color == Player.Cross:
+                if winner_color == Player.Nought:
                     win_count += 1
 
             winrate = win_count / eval_games
@@ -174,9 +175,9 @@ def main():
 
                 play_local_game(q_agent_eval, agents[1], LocalGame())
 
-            # --- Sync game renders to WANDB.
-            if i_epoch % 100 == 0:
-                wandb.save("games/*")
+                # Send images to WANDB
+                wandb.save(q_agent_eval.plot_directory)
+                wandb.save(agents[1].plot_directory)
 
         print(f"Epoch {i_epoch}  Loss: {loss_epoch}")
 
