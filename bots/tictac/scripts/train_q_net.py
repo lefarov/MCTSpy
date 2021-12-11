@@ -8,7 +8,7 @@ import torch.nn.functional
 import torchsummary
 import wandb
 
-from recon_tictac import Player, plotting_mode
+from recon_tictac import Player, Board, plotting_mode
 from recon_tictac.interfaces.reconchess.play import play_local_game
 from recon_tictac.interfaces.reconchess.game import LocalGame
 
@@ -27,7 +27,7 @@ def main():
     net_memory_length = 1
     net_hidden_number = 512
 
-    train_batch_size = 128
+    train_batch_size = 256  # 128
     train_lr = 1e-3
     train_weight_sense = 1.0
     train_eps_max = 0.8
@@ -76,9 +76,14 @@ def main():
 
             # We only train on the white player's perspective for now.
             history_mine = agents[0].history
-            # history_opp = agents[1].history
+            history_opp = agents[1].history
+
+            # Invert the boards in the opponent's history
+            for transition in history_opp:
+                transition.observation = Board.invert_board(transition.observation)
 
             episodes.append(Episode(history_mine))
+            episodes.append(Episode(history_opp))
 
         if train_data_mode == 'replay-buffer':
             replay_buffer.extend(episodes)
@@ -175,9 +180,10 @@ def main():
 
                 play_local_game(q_agent_eval, agents[1], LocalGame())
 
+                # TODO: that doesn't work! debug
                 # Send images to WANDB
-                wandb.save(q_agent_eval.plot_directory)
-                wandb.save(agents[1].plot_directory)
+                # wandb.save(q_agent_eval.plot_directory)
+                # wandb.save(agents[1].plot_directory)
 
         print(f"Epoch {i_epoch}  Loss: {loss_epoch}")
 
