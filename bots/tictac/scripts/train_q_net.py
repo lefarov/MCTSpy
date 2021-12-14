@@ -21,7 +21,7 @@ from bots.tictac.net import TicTacQNet
 def main():
 
     steps_per_epoch = 32
-    epoch_number = 2000
+    epoch_number = 1000
     games_per_epoch = 128
 
     net_memory_length = 1
@@ -44,10 +44,15 @@ def main():
 
     wandb_description = 'fresh-data_true-state_online_eps-sched'
 
-    wandb.init(project="recon_tictactoe", entity="not-working-solutions", )
+    run = wandb.init(project="recon_tictactoe", entity="not-working-solutions", )
     wandb.run.name = wandb.run.name + '-' + wandb_description if wandb.run.name else wandb_description  # Can be 'None'.
 
+    model_dir = os.path.abspath(os.path.join(wandb.run.dir, os.pardir, "model_checkpoint"))
     plotting_dir = os.path.abspath(os.path.join(wandb.run.dir, "games"))
+
+    trained_model_artifact = wandb.Artifact("full-state-conv", type="model")
+    os.makedirs(model_dir)
+    trained_model_artifact.add_dir(model_dir)
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     dtype = torch.float32
@@ -65,7 +70,7 @@ def main():
 
     replay_buffer = []  # type: List[Episode]
 
-    for i_epoch in range(epoch_number):
+    for i_epoch in range(epoch_number + 1):
 
         loss_epoch = 0.0
 
@@ -186,6 +191,11 @@ def main():
                 # wandb.save(agents[1].plot_directory)
 
         print(f"Epoch {i_epoch}  Loss: {loss_epoch}")
+
+        if i_epoch != 0 and i_epoch % 200 == 0:
+            torch.save(q_agent_train.q_net.state_dict(), os.path.join(model_dir, "model.pt"))
+            run.log_artifact(trained_model_artifact,)
+            
 
 
 if __name__ == '__main__':

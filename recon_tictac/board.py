@@ -9,7 +9,6 @@ from recon_tictac.render import render_board
 
 
 class Board:
-    # TODO: Invert the board
     Size: int = 3
     Shape: t.Tuple[int, int] = (3, 3)
 
