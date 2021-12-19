@@ -47,7 +47,7 @@ def main():
     run = wandb.init(project="recon_tictactoe", entity="not-working-solutions", )
     wandb.run.name = wandb.run.name + '-' + wandb_description if wandb.run.name else wandb_description  # Can be 'None'.
 
-    model_dir = os.path.abspath(os.path.join(wandb.run.dir, os.pardir, "model_checkpoint"))
+    model_dir = os.path.abspath(os.path.join(wandb.run.dir, "model_checkpoint"))
     plotting_dir = os.path.abspath(os.path.join(wandb.run.dir, "games"))
 
     trained_model_artifact = wandb.Artifact("full-state-conv", type="model")
@@ -193,8 +193,9 @@ def main():
         print(f"Epoch {i_epoch}  Loss: {loss_epoch}")
 
         if i_epoch != 0 and i_epoch % 200 == 0:
-            torch.save(q_agent_train.q_net.state_dict(), os.path.join(model_dir, "model.pt"))
-            run.log_artifact(trained_model_artifact,)
+            torch.save(q_agent_train.q_net.state_dict(), os.path.join(model_dir, f"model_{i_epoch}.pt"))
+    
+    run.log_artifact(trained_model_artifact)
             
 
 
