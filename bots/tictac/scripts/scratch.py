@@ -1,19 +1,19 @@
-import random
-
-from recon_tictac.interfaces.stateless.simulator import *
-
-
-game = TicTac()
+import os
+import wandb
+import torch
 
 
-for i in range(1000):
-    state, _ = game.get_initial_state()
-    while not game.state_is_terminal(state):
-        actions = game.enumerate_actions(state)
-        nextAction = random.choice(tuple(actions))
-        print(f"Next action player #{state.nextAgentId}: {nextAction}")
-        state, obs, reward, _ = game.step(state, nextAction)
-        print(f"Reward: {reward} Obs: {obs}")
-        print(state)
+if __name__ == "__main__":
+    run = wandb.init(project="recon_tictactoe", entity="not-working-solutions")
+    model_dir = os.path.abspath(os.path.join(run.dir, "model_checkpoint"))
+    os.makedirs(model_dir)
 
-    print(f"Winner: {state.winnerId}")
+    trained_model_artifact = wandb.Artifact("full-state-conv", type="model")
+
+    # Imitate training and checkpointing
+    net = torch.nn.Linear(64, 64)
+    torch.save(net.state_dict(), os.path.join(model_dir, "model_0.pt"))
+    torch.save(net.state_dict(), os.path.join(model_dir, "model_10.pt"))
+
+    trained_model_artifact.add_dir(model_dir)
+    run.log_artifact(trained_model_artifact)

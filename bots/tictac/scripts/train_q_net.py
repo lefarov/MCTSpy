@@ -52,7 +52,6 @@ def main():
 
     trained_model_artifact = wandb.Artifact("full-state-conv", type="model")
     os.makedirs(model_dir)
-    trained_model_artifact.add_dir(model_dir)
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     dtype = torch.float32
@@ -195,6 +194,7 @@ def main():
         if i_epoch != 0 and i_epoch % 200 == 0:
             torch.save(q_agent_train.q_net.state_dict(), os.path.join(model_dir, f"model_{i_epoch}.pt"))
     
+    trained_model_artifact.add_dir(model_dir)
     run.log_artifact(trained_model_artifact)
             
 
